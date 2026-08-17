@@ -1,0 +1,19 @@
+# Arquivos de ambiente e variáveis secretas
+.env
+.venv
+venv/
+env/
+
+# Configurações de IDEs
+.idea/
+.vscode/
+
+# Arquivos gerados pelo Python (Cache)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Arquivos de sistema operacional (Mac/Windows)
+.DS_Store
+Thumbs.db

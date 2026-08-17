@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Auditoria E-BEF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .row-expanded {
+            background-color: #eff6ff;
+            box-shadow: inset 4px 0 0 #3b82f6;
+        }
+        .audit-table th,
+        .audit-table td { overflow-wrap: anywhere; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans text-slate-800">
+    <main class="max-w-[1500px] mx-auto p-4 md:p-8">
+        <header class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 mb-5">
+            <div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <h1 class="text-3xl font-bold text-slate-950">Auditoria E-BEF</h1>
+                    <span id="anoBadge" class="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold">Carregando...</span>
+                </div>
+                <p class="text-slate-500 mt-1">Auditoria por natureza jurídica, QSA atual e receita fiscal estimada</p>
+                <p id="ultimaAtualizacao" class="text-xs text-slate-400 mt-1">Aguardando atualização...</p>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2">
+                <button type="button" onclick="exportarCsv()"
+                        class="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-sm font-medium shadow-sm">
+                    Exportar CSV
+                </button>
+                <button type="button" onclick="fetchDados()"
+                        class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium shadow-sm">
+                    Atualizar consulta
+                </button>
+            </div>
+        </header>
+
+        <section class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+            <article class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Analisadas</p>
+                <p id="cardTotal" class="text-2xl font-bold mt-1 text-slate-950">0</p>
+            </article>
+            <article class="bg-white border border-red-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-red-600">Obrigadas 2026</p>
+                <p id="cardObrigadas" class="text-2xl font-bold mt-1 text-red-700">0</p>
+            </article>
+            <article class="bg-white border border-amber-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-amber-600">Dados pendentes</p>
+                <p id="cardPendencias" class="text-2xl font-bold mt-1 text-amber-700">0</p>
+            </article>
+            <article class="bg-white border border-blue-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">Faseamento</p>
+                <p id="cardFaseamento" class="text-2xl font-bold mt-1 text-blue-700">0</p>
+            </article>
+            <article class="bg-white border border-emerald-200 rounded-xl p-4 shadow-sm col-span-2 lg:col-span-1">
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-600">Dispensadas</p>
+                <p id="cardDispensa" class="text-2xl font-bold mt-1 text-emerald-700">0</p>
+            </article>
+        </section>
+
+        <section class="bg-blue-50/60 border border-blue-100 rounded-lg p-3.5 mb-4 shadow-sm">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 pb-2.5 border-b border-blue-200/50">
+                <div>
+                    <h2 class="text-sm font-semibold text-blue-900">Como a ferramenta está classificando as empresas</h2>
+                    <p class="text-xs text-blue-700 mt-0.5">Mapa resumido dos critérios aplicados nesta pré-auditoria.</p>
+                </div>
+                <a href="https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/cadastros/cnpj/manual_ebef_v01_final.pdf"
+                   target="_blank" rel="noopener noreferrer"
+                   class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded border border-blue-200 bg-white/80 text-blue-700 hover:bg-white text-xs font-semibold transition-colors shadow-sm">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3M7 4h7l3 3v13H7V4z"></path>
+                    </svg>
+                    Abrir Manual e-BEF
+                </a>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                <article class="rounded border border-blue-100/80 bg-white/50 p-2.5">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-blue-800">1. Natureza jurídica</p>
+                    <p class="text-xs text-blue-900/80 mt-1 leading-relaxed">Identifica dispensas diretas, obrigações pela natureza e situações que ainda exigem revisão manual.</p>
+                </article>
+                <article class="rounded border border-blue-100/80 bg-white/50 p-2.5">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-blue-800">2. QSA atual</p>
+                    <p class="text-xs text-blue-900/80 mt-1 leading-relaxed">Verifica sócios PJ, documentos inválidos e o quadro específico das SCPs. Sócio PJ pode antecipar a obrigação.</p>
+                </article>
+                <article class="rounded border border-blue-100/80 bg-white/50 p-2.5">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-blue-800">3. Receita do ano anterior</p>
+                    <p class="text-xs text-blue-900/80 mt-1 leading-relaxed">Sem sócio PJ, compara a receita estimada com R$ 78 milhões e R$ 4,8 milhões para indicar o faseamento.</p>
+                </article>
+            </div>
+
+            <div class="flex flex-col md:flex-row gap-2 md:gap-5 mt-2.5 pt-2.5 border-t border-blue-200/50 text-[11px] text-blue-800/80">
+                <p><span class="font-semibold text-blue-900">Escopo:</span> somente matriz ativa no Domínio; filiais ativas são consolidadas pela raiz do CNPJ.</p>
+                <p><span class="font-semibold text-blue-900">SCP:</span> ostensivo e participantes são considerados independentemente do percentual.</p>
+            </div>
+        </section>
+
+        <section class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                <div class="xl:col-span-2">
+                    <label for="searchInput" class="block text-xs font-semibold text-slate-600 mb-1">Buscar empresa</label>
+                    <input type="text" id="searchInput" placeholder="Código, razão social, CNPJ com ou sem pontuação..."
+                           class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label for="statusFilter" class="block text-xs font-semibold text-slate-600 mb-1">Situação</label>
+                    <select id="statusFilter" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                        <option value="">Todas</option>
+                        <option value="OBRIGADA_2026">Obrigada em 2026</option>
+                        <option value="DADOS_INCONSISTENTES">Dados inconsistentes</option>
+                        <option value="DADOS_INSUFICIENTES">Dados insuficientes</option>
+                        <option value="REVISAO_MANUAL">Revisão manual</option>
+                        <option value="FASEAMENTO_2027">Faseamento 2027</option>
+                        <option value="FASEAMENTO_2028">Faseamento 2028</option>
+                        <option value="DISPENSA_PROVAVEL">Dispensa provável</option>
+                        <option value="DISPENSADA">Dispensada</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="sociosPjFilter" class="block text-xs font-semibold text-slate-600 mb-1">Sócio PJ</label>
+                    <select id="sociosPjFilter" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                        <option value="">Todos</option>
+                        <option value="sim">Com sócio PJ</option>
+                        <option value="nao">Sem sócio PJ</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="rowsPerPageSelect" class="block text-xs font-semibold text-slate-600 mb-1">Linhas por página</label>
+                    <select id="rowsPerPageSelect" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div class="table-scroll overflow-y-auto overflow-x-hidden max-h-[62vh]">
+                <table class="audit-table w-full table-fixed text-sm">
+                    <colgroup>
+                        <col style="width: 3%">
+                        <col style="width: 12%">
+                        <col style="width: 5%">
+                        <col style="width: 22%">
+                        <col style="width: 14%">
+                        <col style="width: 20%">
+                        <col style="width: 6%">
+                        <col style="width: 7%">
+                        <col style="width: 11%">
+                    </colgroup>
+                    <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                        <tr class="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="px-2 py-3"></th>
+                            <th class="px-2 py-3">Situação</th>
+                            <th class="px-2 py-3">Cód.</th>
+                            <th class="px-2 py-3">Razão social</th>
+                            <th class="px-2 py-3">CNPJ</th>
+                            <th class="px-2 py-3">Natureza jurídica</th>
+                            <th class="px-2 py-3 text-center">Est.</th>
+                            <th class="px-2 py-3 text-center">PJ</th>
+                            <th class="px-2 py-3">Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-200">
+                        <tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Carregando dados...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <footer class="bg-slate-50 px-5 py-3 border-t border-slate-200 flex flex-col sm:flex-row gap-3 items-center justify-between">
+                <p class="text-sm text-slate-700" id="paginationInfo">Aguardando...</p>
+                <div class="flex gap-2">
+                    <button id="prevBtn" type="button" onclick="changePage(-1)" disabled
+                            class="px-3 py-1.5 border border-slate-300 rounded-md bg-white text-sm hover:bg-slate-50 disabled:opacity-50">
+                        Anterior
+                    </button>
+                    <button id="nextBtn" type="button" onclick="changePage(1)" disabled
+                            class="px-3 py-1.5 border border-slate-300 rounded-md bg-white text-sm hover:bg-slate-50 disabled:opacity-50">
+                        Próximo
+                    </button>
+                </div>
+            </footer>
+        </section>
+    </main>
+
+    <script>
+        let empresasData = [];
+        let currentFilteredData = [];
+        let currentPage = 1;
+        let rowsPerPage = 50;
+        let metaRelatorio = {};
+
+        const formatadorBRL = new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        });
+
+        function escapeHtml(valor) {
+            return String(valor ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+        }
+
+        function normalizarBusca(valor) {
+            return String(valor ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        function formatarDocumento(valor) {
+            const documento = String(valor ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+            if (/^\d{11}$/.test(documento)) {
+                return documento.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+            }
+
+            if (/^[A-Z0-9]{14}$/.test(documento)) {
+                return `${documento.slice(0, 2)}.${documento.slice(2, 5)}.${documento.slice(5, 8)}/${documento.slice(8, 12)}-${documento.slice(12)}`;
+            }
+
+            return valor || 'Não informado';
+        }
+
+        function formatarDataHora(valor) {
+            if (!valor) return 'Data não informada';
+            return new Intl.DateTimeFormat('pt-BR', {
+                dateStyle: 'short',
+                timeStyle: 'medium'
+            }).format(new Date(valor));
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                OBRIGADA_2026: ['Obrigada 2026', 'bg-red-100 text-red-800 border-red-200'],
+                DADOS_INCONSISTENTES: ['Dados inconsistentes', 'bg-amber-100 text-amber-900 border-amber-200'],
+                DADOS_INSUFICIENTES: ['Dados insuficientes', 'bg-slate-100 text-slate-700 border-slate-200'],
+                REVISAO_MANUAL: ['Revisão manual', 'bg-violet-100 text-violet-800 border-violet-200'],
+                FASEAMENTO_2027: ['Faseamento 2027', 'bg-blue-100 text-blue-800 border-blue-200'],
+                FASEAMENTO_2028: ['Faseamento 2028', 'bg-cyan-100 text-cyan-800 border-cyan-200'],
+                DISPENSA_PROVAVEL: ['Dispensa provável', 'bg-teal-100 text-teal-800 border-teal-200'],
+                DISPENSADA: ['Dispensada', 'bg-emerald-100 text-emerald-800 border-emerald-200']
+            };
+
+            const [texto, classes] = badges[status] || ['Analisar', 'bg-slate-100 text-slate-700 border-slate-200'];
+            return `<span class="inline-flex w-full justify-center text-center px-2 py-1 rounded-md border font-semibold text-xs leading-tight ${classes}">${texto}</span>`;
+        }
+
+        function formatarNatureza(emp) {
+            if (!emp.codigo_natureza || !emp.natureza_juridica) return 'Não cadastrada';
+            return `${emp.codigo_natureza} - ${emp.natureza_juridica}`;
+        }
+
+        function renderEstabelecimentos(estabelecimentos) {
+            if (!estabelecimentos || estabelecimentos.length === 0) {
+                return '<p class="text-sm text-slate-500 italic">Nenhum estabelecimento localizado.</p>';
+            }
+
+            return estabelecimentos.map(est => `
+                <li class="py-2 border-b border-slate-100 last:border-b-0">
+                    <div class="flex flex-col md:flex-row md:justify-between gap-1">
+                        <div>
+                            <p class="font-medium text-slate-800">${escapeHtml(est.codigo)} - ${escapeHtml(est.razao_social)}</p>
+                            <p class="text-sm text-slate-500">${escapeHtml(formatarDocumento(est.cnpj))}</p>
+                        </div>
+                        ${est.cadastro_exibido ? '<span class="text-xs font-semibold text-blue-700">Cadastro exibido</span>' : ''}
+                    </div>
+                </li>`).join('');
+        }
+
+        function renderSocios(socios) {
+            if (!socios || socios.length === 0) {
+                return '<p class="text-sm text-slate-500 italic">Nenhum sócio localizado no cadastro consultado.</p>';
+            }
+
+            return socios.map(socio => {
+                const tipoPJ = socio.tipo === 'PJ';
+                const invalido = socio.valido === false;
+                const tipoClasse = tipoPJ
+                    ? 'bg-red-50 text-red-700 border-red-200'
+                    : socio.tipo === 'PF'
+                        ? 'bg-slate-100 text-slate-700 border-slate-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200';
+                const validadeClasse = invalido ? 'text-amber-700 font-semibold' : 'text-slate-500';
+
+                return `
+                    <li class="py-2 border-b border-slate-100 last:border-b-0 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                        <div>
+                            <p class="font-medium ${tipoPJ ? 'text-red-700' : 'text-slate-800'}">${escapeHtml(socio.nome)}</p>
+                            <p class="text-sm text-slate-500">${escapeHtml(formatarDocumento(socio.documento || socio.inscricao_original))}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-0.5 rounded border text-xs font-semibold ${tipoClasse}">${escapeHtml(socio.tipo)}</span>
+                            <span class="text-xs ${validadeClasse}">${escapeHtml(socio.observacao)}</span>
+                        </div>
+                    </li>`;
+            }).join('');
+        }
+
+        async function fetchDados() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Atualizando dados...</td></tr>';
+
+            try {
+                const response = await fetch('/api/ebef', { cache: 'no-store' });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'Erro na API');
+
+                empresasData = Array.isArray(payload) ? payload : (payload.dados || []);
+                metaRelatorio = Array.isArray(payload) ? {} : (payload.meta || {});
+                currentPage = 1;
+
+                atualizarCabecalho();
+                atualizarCartoes();
+                aplicarFiltros();
+            } catch (error) {
+                tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-10 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`;
+            }
+        }
+
+        function atualizarCabecalho() {
+            const anoReferencia = metaRelatorio.ano_referencia || 'não informado';
+            document.getElementById('anoBadge').textContent = `Receita estimada: ${anoReferencia}`;
+            document.getElementById('ultimaAtualizacao').textContent = `Última consulta: ${formatarDataHora(metaRelatorio.gerado_em)}`;
+        }
+
+        function atualizarCartoes() {
+            const contar = (...status) => empresasData.filter(emp => status.includes(emp.status_codigo)).length;
+            document.getElementById('cardTotal').textContent = empresasData.length.toLocaleString('pt-BR');
+            document.getElementById('cardObrigadas').textContent = contar('OBRIGADA_2026').toLocaleString('pt-BR');
+            document.getElementById('cardPendencias').textContent = contar('DADOS_INCONSISTENTES', 'DADOS_INSUFICIENTES', 'REVISAO_MANUAL').toLocaleString('pt-BR');
+            document.getElementById('cardFaseamento').textContent = contar('FASEAMENTO_2027', 'FASEAMENTO_2028').toLocaleString('pt-BR');
+            document.getElementById('cardDispensa').textContent = contar('DISPENSA_PROVAVEL', 'DISPENSADA').toLocaleString('pt-BR');
+        }
+
+        function aplicarFiltros() {
+            const termoOriginal = document.getElementById('searchInput').value.trim().toLowerCase();
+            const termoNormalizado = normalizarBusca(termoOriginal);
+            const status = document.getElementById('statusFilter').value;
+            const filtroSocioPj = document.getElementById('sociosPjFilter').value;
+
+            currentFilteredData = empresasData.filter(emp => {
+                const estabelecimentosTexto = (emp.estabelecimentos || []).map(est =>
+                    `${est.codigo} ${est.razao_social} ${est.cnpj} ${formatarDocumento(est.cnpj)}`
+                ).join(' ');
+                const textoCompleto = [
+                    emp.codigo,
+                    emp.razao_social,
+                    emp.cnpj,
+                    formatarDocumento(emp.cnpj),
+                    emp.codigo_natureza,
+                    emp.natureza_juridica,
+                    estabelecimentosTexto
+                ].join(' ').toLowerCase();
+
+                const encontrouTexto = !termoOriginal
+                    || textoCompleto.includes(termoOriginal)
+                    || normalizarBusca(textoCompleto).includes(termoNormalizado);
+
+                const encontrouStatus = !status || emp.status_codigo === status;
+                const encontrouSocioPj = !filtroSocioPj
+                    || (filtroSocioPj === 'sim' && emp.qtd_socios_pj > 0)
+                    || (filtroSocioPj === 'nao' && emp.qtd_socios_pj === 0);
+
+                return encontrouTexto && encontrouStatus && encontrouSocioPj;
+            });
+
+            const totalPaginas = Math.max(1, Math.ceil(currentFilteredData.length / rowsPerPage));
+            if (currentPage > totalPaginas) currentPage = totalPaginas;
+            renderTable();
+        }
+
+        function toggleRow(empId) {
+            const detailRow = document.getElementById(`detail-${empId}`);
+            const mainRow = document.getElementById(`main-${empId}`);
+            const icon = document.getElementById(`icon-${empId}`);
+
+            if (detailRow.classList.contains('hidden')) {
+                detailRow.classList.remove('hidden');
+                mainRow.classList.add('row-expanded');
+                icon.style.transform = 'rotate(90deg)';
+            } else {
+                detailRow.classList.add('hidden');
+                mainRow.classList.remove('row-expanded');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            if (currentFilteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Nenhuma empresa encontrada com os filtros informados.</td></tr>';
+                updatePaginationInfo();
+                return;
+            }
+
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const dataToRender = currentFilteredData.slice(startIndex, startIndex + rowsPerPage);
+
+            dataToRender.forEach(emp => {
+                const empId = String(emp.codigo).replace(/[^a-zA-Z0-9_-]/g, '_');
+                const faturamento = formatadorBRL.format(Number(emp.faturamento || 0));
+                const cnpjFormatado = formatarDocumento(emp.cnpj);
+                const cnpjInvalido = emp.cnpj_valido === false;
+
+                const mainTr = document.createElement('tr');
+                mainTr.id = `main-${empId}`;
+                mainTr.className = 'hover:bg-slate-50 cursor-pointer transition-colors';
+                mainTr.onclick = () => toggleRow(empId);
+                mainTr.innerHTML = `
+                    <td class="px-2 py-2.5 text-slate-400 text-center">
+                        <svg id="icon-${empId}" class="w-4 h-4 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </td>
+                    <td class="px-2 py-2.5">${getStatusBadge(emp.status_codigo)}</td>
+                    <td class="px-2 py-2.5 font-semibold text-slate-950">${escapeHtml(emp.codigo)}</td>
+                    <td class="px-2 py-2.5 text-slate-700 truncate" title="${escapeHtml(emp.razao_social)}">${escapeHtml(emp.razao_social)}</td>
+                    <td class="px-2 py-2.5 text-xs leading-tight break-all ${cnpjInvalido ? 'text-amber-700 font-semibold' : 'text-slate-600'}">${escapeHtml(cnpjFormatado)}</td>
+                    <td class="px-2 py-2.5 text-slate-600 text-xs leading-snug truncate" title="${escapeHtml(formatarNatureza(emp))}">${escapeHtml(formatarNatureza(emp))}</td>
+                    <td class="px-2 py-2.5 text-center">
+                        <span class="inline-flex min-w-7 justify-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold">${escapeHtml(emp.qtd_estabelecimentos)}</span>
+                    </td>
+                    <td class="px-2 py-2.5 text-center">
+                        <span class="inline-flex min-w-7 justify-center px-2 py-0.5 rounded ${emp.qtd_socios_pj > 0 ? 'text-red-700 font-bold bg-red-50' : 'text-slate-500 bg-slate-50'}">${escapeHtml(emp.qtd_socios_pj)}</span>
+                    </td>
+                    <td class="px-2 py-2.5 text-slate-600 text-xs leading-snug truncate" title="${escapeHtml(emp.diagnostico)}">${escapeHtml(emp.motivo_curto)}</td>`;
+
+                const detailTr = document.createElement('tr');
+                detailTr.id = `detail-${empId}`;
+                detailTr.className = 'hidden bg-blue-50/40 border-b border-blue-100';
+                detailTr.innerHTML = `
+                    <td colspan="9" class="px-4 md:px-8 py-5">
+                        <div class="rounded-xl border border-blue-200 border-l-4 border-l-blue-600 bg-white p-4 shadow-sm">
+                        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                            <div class="xl:col-span-2 space-y-4">
+                                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-950">
+                                    <p class="font-bold mb-1">Conclusão da auditoria</p>
+                                    <p>${escapeHtml(emp.diagnostico)}</p>
+                                </div>
+
+                                <div class="border border-slate-200 rounded-lg p-4 shadow-sm">
+                                    <h4 class="font-bold text-slate-900 mb-2">Quadro societário atual</h4>
+                                    <ul>${renderSocios(emp.socios)}</ul>
+                                </div>
+
+                                <div class="border border-slate-200 rounded-lg p-4 shadow-sm">
+                                    <h4 class="font-bold text-slate-900 mb-2">Estabelecimentos agrupados pela raiz do CNPJ</h4>
+                                    <ul>${renderEstabelecimentos(emp.estabelecimentos)}</ul>
+                                </div>
+                            </div>
+
+                            <div class="border border-slate-200 rounded-lg p-4 bg-slate-50 shadow-sm">
+                                <h4 class="font-bold text-slate-900 mb-3">Dados considerados</h4>
+                                <dl class="space-y-3 text-sm">
+                                    <div>
+                                        <dt class="text-slate-500">CNPJ</dt>
+                                        <dd class="font-medium">${escapeHtml(cnpjFormatado)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-slate-500">Raiz do CNPJ</dt>
+                                        <dd class="font-medium">${escapeHtml(emp.cnpj_raiz || 'Não identificada')}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-slate-500">Estabelecimentos consolidados</dt>
+                                        <dd class="font-medium">${escapeHtml(emp.qtd_estabelecimentos)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-slate-500">Receita estimada — ${escapeHtml(emp.ano_referencia)}</dt>
+                                        <dd class="font-medium">${escapeHtml(faturamento)}</dd>
+                                        <dd class="text-xs text-slate-500">Soma das saídas + serviços de todos os estabelecimentos agrupados</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-slate-500">Movimento fiscal encontrado</dt>
+                                        <dd class="font-medium">${emp.tem_movimento ? 'Sim' : 'Não'}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-slate-500">Natureza jurídica</dt>
+                                        <dd class="font-medium">${escapeHtml(formatarNatureza(emp))}</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+                        </div>
+                    </td>`;
+
+                tbody.appendChild(mainTr);
+                tbody.appendChild(detailTr);
+            });
+
+            updatePaginationInfo();
+        }
+
+        function updatePaginationInfo() {
+            const total = currentFilteredData.length;
+            const start = total === 0 ? 0 : ((currentPage - 1) * rowsPerPage) + 1;
+            const end = Math.min(start + rowsPerPage - 1, total);
+            const totalPaginas = Math.max(1, Math.ceil(total / rowsPerPage));
+
+            document.getElementById('paginationInfo').innerHTML = `Mostrando <b>${start}</b> até <b>${end}</b> de <b>${total}</b> registros filtrados`;
+            document.getElementById('prevBtn').disabled = currentPage <= 1 || total === 0;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPaginas || total === 0;
+        }
+
+        function changePage(direcao) {
+            const totalPaginas = Math.max(1, Math.ceil(currentFilteredData.length / rowsPerPage));
+            currentPage = Math.min(totalPaginas, Math.max(1, currentPage + direcao));
+            renderTable();
+            document.querySelector('.table-scroll').scrollTop = 0;
+        }
+
+        function protegerCelulaCsv(valor) {
+            const texto = String(valor ?? '');
+            const seguro = /^[=+\-@]/.test(texto) ? `'${texto}` : texto;
+            return `"${seguro.replaceAll('"', '""')}"`;
+        }
+
+        function exportarCsv() {
+            if (currentFilteredData.length === 0) {
+                alert('Não há registros para exportar.');
+                return;
+            }
+
+            const cabecalho = [
+                'Status', 'Código principal', 'Códigos agrupados', 'Razão Social', 'CNPJ exibido',
+                'Raiz CNPJ', 'Natureza jurídica', 'Estabelecimentos', 'Sócios PJ',
+                'Receita estimada', 'Ano da receita', 'Motivo', 'Diagnóstico'
+            ];
+            const linhas = currentFilteredData.map(emp => [
+                emp.status_codigo,
+                emp.codigo,
+                (emp.codigos_empresa || []).join(', '),
+                emp.razao_social,
+                formatarDocumento(emp.cnpj),
+                emp.cnpj_raiz,
+                formatarNatureza(emp),
+                emp.qtd_estabelecimentos,
+                emp.qtd_socios_pj,
+                Number(emp.faturamento || 0).toFixed(2).replace('.', ','),
+                emp.ano_referencia,
+                emp.motivo_curto,
+                emp.diagnostico
+            ]);
+
+            const conteudo = [cabecalho, ...linhas]
+                .map(linha => linha.map(protegerCelulaCsv).join(';'))
+                .join('\r\n');
+            const blob = new Blob(['\uFEFF' + conteudo], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `auditoria_ebef_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        document.getElementById('searchInput').addEventListener('input', () => {
+            currentPage = 1;
+            aplicarFiltros();
+        });
+        document.getElementById('statusFilter').addEventListener('change', () => {
+            currentPage = 1;
+            aplicarFiltros();
+        });
+        document.getElementById('sociosPjFilter').addEventListener('change', () => {
+            currentPage = 1;
+            aplicarFiltros();
+        });
+        document.getElementById('rowsPerPageSelect').addEventListener('change', event => {
+            rowsPerPage = Number(event.target.value);
+            currentPage = 1;
+            renderTable();
+        });
+
+        window.addEventListener('load', fetchDados);
+    </script>
+</body>
+</html>
