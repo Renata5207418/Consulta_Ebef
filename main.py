@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 
 from database.db_conection import DatabaseConnection
 
@@ -11,14 +11,50 @@ from database.db_conection import DatabaseConnection
 app = Flask(__name__)
 
 
+def obter_ano_apresentacao_padrao() -> int:
+    try:
+        return DatabaseConnection.validar_ano_apresentacao(
+            DatabaseConnection.obter_ano_apresentacao_padrao()
+        )
+    except ValueError as exc:
+        ano_atual = datetime.now(ZoneInfo("America/Sao_Paulo")).year
+        logging.warning(
+            "Ano padrão do e-BEF inválido no .env (%s). Usando %s.",
+            exc,
+            ano_atual,
+        )
+        return max(DatabaseConnection.ANO_INICIO_EBEF, ano_atual)
+
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    ano_atual = datetime.now(ZoneInfo("America/Sao_Paulo")).year
+    ano_padrao = obter_ano_apresentacao_padrao()
+    anos_disponiveis = list(
+        range(DatabaseConnection.ANO_INICIO_EBEF, ano_atual + 1)
+    )
+    return render_template(
+        "index.html",
+        anos_disponiveis=anos_disponiveis,
+        ano_apresentacao_padrao=ano_padrao,
+    )
 
 
 @app.route("/api/ebef")
 def api_ebef():
-    db = DatabaseConnection()
+    ano_solicitado = request.args.get(
+        "ano_apresentacao",
+        request.args.get("ano", obter_ano_apresentacao_padrao()),
+    )
+
+    try:
+        ano_apresentacao = DatabaseConnection.validar_ano_apresentacao(
+            ano_solicitado
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    db = DatabaseConnection(ano_apresentacao=ano_apresentacao)
 
     if not db.connect():
         return jsonify({"error": "Falha ao conectar no banco de dados da Domínio."}), 500
@@ -31,6 +67,7 @@ def api_ebef():
                 "dados": dados,
                 "meta": {
                     "total": len(dados),
+                    "ano_apresentacao": db.ano_apresentacao,
                     "ano_referencia": db.ano_referencia,
                     "gerado_em": agora.isoformat(),
                     "classificacao_preliminar": True,

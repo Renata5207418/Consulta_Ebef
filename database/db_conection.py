@@ -33,8 +33,11 @@ else:
 
 
 class DatabaseConnection:
-    LIMITE_FASE_2027 = Decimal("78000000")
-    LIMITE_FASE_2028 = Decimal("4800000")
+    ANO_INICIO_EBEF = 2026
+    ANO_INICIO_FASE_78_MILHOES = 2027
+    ANO_INICIO_FASE_4_8_MILHOES = 2028
+    LIMITE_78_MILHOES = Decimal("78000000")
+    LIMITE_4_8_MILHOES = Decimal("4800000")
 
     # Sociedades simples ou limitadas cujo enquadramento depende do QSA e da
     # receita bruta do ano anterior, conforme o faseamento do e-BEF.
@@ -48,7 +51,36 @@ class DatabaseConnection:
         2011, 2038, 2046, 2135, 2194, 2275, 2283, 2305, 2313, 2321
     }
 
-    def __init__(self):
+    @classmethod
+    def obter_ano_apresentacao_padrao(cls) -> int:
+        """Obtém o exercício padrão sem quebrar o .env utilizado anteriormente."""
+        ano_apresentacao = os.getenv("EBEF_ANO_APRESENTACAO")
+        if ano_apresentacao:
+            return int(ano_apresentacao)
+
+        # Compatibilidade: EBEF_ANO_REFERENCIA representa o ano da receita.
+        ano_referencia = os.getenv("EBEF_ANO_REFERENCIA")
+        if ano_referencia:
+            return int(ano_referencia) + 1
+
+        return max(cls.ANO_INICIO_EBEF, date.today().year)
+
+    @classmethod
+    def validar_ano_apresentacao(cls, valor) -> int:
+        try:
+            ano = int(valor)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Ano de apresentação inválido.") from exc
+
+        ano_atual = date.today().year
+        if ano < cls.ANO_INICIO_EBEF or ano > ano_atual:
+            raise ValueError(
+                f"O ano de apresentação deve estar entre "
+                f"{cls.ANO_INICIO_EBEF} e {ano_atual}."
+            )
+        return ano
+
+    def __init__(self, ano_apresentacao=None):
         self.host = os.getenv("DOMINIO_HOST")
         self.port = os.getenv("DOMINIO_PORT", "2638")
         self.dbname = os.getenv("DOMINIO_DB")
@@ -56,9 +88,13 @@ class DatabaseConnection:
         self.password = os.getenv("DOMINIO_PASSWORD")
         self.engine = os.getenv("DOMINIO_ENGINE", "dominio")
 
-        self.ano_referencia = int(
-            os.getenv("EBEF_ANO_REFERENCIA", str(date.today().year - 1))
+        ano_solicitado = (
+            self.obter_ano_apresentacao_padrao()
+            if ano_apresentacao is None
+            else ano_apresentacao
         )
+        self.ano_apresentacao = self.validar_ano_apresentacao(ano_solicitado)
+        self.ano_referencia = self.ano_apresentacao - 1
         self.codigo_maximo = int(os.getenv("EBEF_CODIGO_MAXIMO", "3526"))
 
         self.conn_str = (
@@ -189,6 +225,56 @@ class DatabaseConnection:
 
         return consolidadas
 
+    def _classificar_faseamento_por_receita(
+        self,
+        faturamento_decimal: Decimal,
+    ):
+        """Aplica as etapas publicadas para sociedades simples/limitadas sem PJ."""
+        if faturamento_decimal <= self.LIMITE_4_8_MILHOES:
+            return (
+                "DISPENSA_PROVAVEL",
+                "Dispensa por QSA e receita — validar ECF",
+                (
+                    f"Dispensa provável em {self.ano_apresentacao}: não há sócio PJ "
+                    "no QSA atual e a receita fiscal estimada não ultrapassa "
+                    "R$ 4,8 milhões. Confirmar a receita bruta oficial na ECF "
+                    f"referente a {self.ano_referencia}."
+                ),
+                None,
+            )
+
+        if faturamento_decimal > self.LIMITE_78_MILHOES:
+            ano_inicio = self.ANO_INICIO_FASE_78_MILHOES
+            faixa_receita = "acima de R$ 78 milhões"
+        else:
+            ano_inicio = self.ANO_INICIO_FASE_4_8_MILHOES
+            faixa_receita = "acima de R$ 4,8 milhões e até R$ 78 milhões"
+
+        if self.ano_apresentacao >= ano_inicio:
+            return (
+                "OBRIGADA",
+                f"Obrigação por receita — etapa vigente desde {ano_inicio}",
+                (
+                    f"Obrigada em {self.ano_apresentacao}: não há sócio PJ no QSA "
+                    f"atual, mas a receita fiscal estimada de {self.ano_referencia} "
+                    f"está {faixa_receita}. Esta etapa do faseamento vigora desde "
+                    f"{ano_inicio}. Confirmar a receita bruta oficial na ECF."
+                ),
+                ano_inicio,
+            )
+
+        return (
+            "FASEAMENTO_FUTURO",
+            f"Faseamento futuro — reavaliar em {ano_inicio}",
+            (
+                f"No ano de apresentação {self.ano_apresentacao}, esta faixa de "
+                f"receita ainda não gera obrigação pelo faseamento. A etapa começa "
+                f"em {ano_inicio}; o enquadramento deverá ser recalculado naquele "
+                "exercício com a receita do respectivo ano anterior declarada na ECF."
+            ),
+            ano_inicio,
+        )
+
     def _classificar_empresa(self, empresa: dict) -> dict:
         faturamento_decimal = self._valor_decimal(empresa.get("faturamento"))
         socios = transformar_lista_socios(empresa.get("lista_socios"))
@@ -217,6 +303,7 @@ class DatabaseConnection:
         natureza_inconsistente = empresa.get("natureza_inconsistente", False)
         faseada = codigo_natureza in self.NATUREZAS_FASEADAS
         limitada = codigo_natureza in self.NATUREZAS_LIMITADAS
+        ano_inicio_regra = None
 
         if cnpj_valido is False:
             status = "DADOS_INCONSISTENTES"
@@ -261,12 +348,14 @@ class DatabaseConnection:
                 "atua como administradora fiduciária/gestora de ativos de terceiros."
             )
         elif codigo_natureza == 2127:
-            status = "OBRIGADA_2026"
+            status = "OBRIGADA"
+            ano_inicio_regra = self.ANO_INICIO_EBEF
 
             if not socios:
                 motivo_curto = "SCP obrigada — participantes pendentes"
                 diagnostico = (
-                    "Obrigada em 2026: Sociedade em Conta de Participação. "
+                    f"Obrigada em {self.ano_apresentacao}: Sociedade em Conta de "
+                    "Participação. "
                     "Não foram localizados o sócio ostensivo e os participantes "
                     "no quadro específico da SCP no Domínio. O cadastro deve ser "
                     "complementado para identificar os beneficiários finais."
@@ -274,7 +363,8 @@ class DatabaseConnection:
             elif documentos_inconsistentes:
                 motivo_curto = "SCP obrigada — documentos pendentes"
                 diagnostico = (
-                    "Obrigada em 2026: Sociedade em Conta de Participação. "
+                    f"Obrigada em {self.ano_apresentacao}: Sociedade em Conta de "
+                    "Participação. "
                     "O quadro específico da SCP foi localizado, mas há participante "
                     "com CPF ou CNPJ ausente ou inválido. Tanto o sócio ostensivo "
                     "quanto os participantes devem ser considerados, "
@@ -283,7 +373,8 @@ class DatabaseConnection:
             else:
                 motivo_curto = f"SCP com {len(socios)} participante(s)"
                 diagnostico = (
-                    "Obrigada em 2026: Sociedade em Conta de Participação com "
+                    f"Obrigada em {self.ano_apresentacao}: Sociedade em Conta de "
+                    "Participação com "
                     f"{len(socios)} participante(s) localizado(s). Tanto o sócio "
                     "ostensivo quanto os participantes devem ser considerados, "
                     "independentemente do percentual de participação."
@@ -300,13 +391,16 @@ class DatabaseConnection:
             motivo_curto = "QSA não localizado"
             diagnostico = (
                 "Não foi localizado QSA atual na Domínio. Para esta natureza, o QSA é "
-                "necessário para validar o faseamento ou a obrigação em 2026."
+                "necessário para validar o faseamento ou a obrigação no ano "
+                f"selecionado ({self.ano_apresentacao})."
             )
         elif faseada and socios_pj and limitada:
-            status = "OBRIGADA_2026"
+            status = "OBRIGADA"
+            ano_inicio_regra = self.ANO_INICIO_EBEF
             motivo_curto = f"Limitada com {len(socios_pj)} sócio(s) PJ"
             diagnostico = (
-                f"Obrigada em 2026: {natureza_juridica} com {len(socios_pj)} "
+                f"Obrigada em {self.ano_apresentacao}: {natureza_juridica} com "
+                f"{len(socios_pj)} "
                 "sócio(s) pessoa jurídica no QSA atual."
             )
         elif faseada and socios_pj:
@@ -316,33 +410,22 @@ class DatabaseConnection:
                 "Há sócio PJ no QSA atual. A dispensa por faturamento exige ausência "
                 "de pessoa jurídica no QSA; valide o enquadramento desta natureza."
             )
-        elif faseada and faturamento_decimal > self.LIMITE_FASE_2027:
-            status = "FASEAMENTO_2027"
-            motivo_curto = "Faseamento 2027 — validar ECF"
-            diagnostico = (
-                "Sem sócio PJ no QSA atual e com receita fiscal estimada acima de "
-                "R$ 78 milhões. Confirmar a receita bruta oficial na ECF para concluir."
-            )
-        elif faseada and faturamento_decimal > self.LIMITE_FASE_2028:
-            status = "FASEAMENTO_2028"
-            motivo_curto = "Faseamento 2028 — validar ECF"
-            diagnostico = (
-                "Sem sócio PJ no QSA atual e com receita fiscal estimada acima de "
-                "R$ 4,8 milhões. Confirmar a receita bruta oficial na ECF para concluir."
-            )
         elif faseada:
-            status = "DISPENSA_PROVAVEL"
-            motivo_curto = "Dispensa por QSA e receita — validar ECF"
-            diagnostico = (
-                "Dispensa provável: não há sócio PJ no QSA atual e a receita fiscal "
-                "estimada não ultrapassa R$ 4,8 milhões. Confirmar a receita bruta "
-                "oficial do ano anterior na ECF."
+            (
+                status,
+                motivo_curto,
+                diagnostico,
+                ano_inicio_regra,
+            ) = self._classificar_faseamento_por_receita(
+                faturamento_decimal
             )
         else:
-            status = "OBRIGADA_2026"
+            status = "OBRIGADA"
+            ano_inicio_regra = self.ANO_INICIO_EBEF
             motivo_curto = f"Obrigação pela natureza {codigo_natureza}"
             diagnostico = (
-                f"Obrigada em 2026 pela natureza jurídica {codigo_natureza} - "
+                f"Obrigada em {self.ano_apresentacao} pela natureza jurídica "
+                f"{codigo_natureza} - "
                 f"{natureza_juridica}, não abrangida pelas dispensas ou pelo faseamento."
             )
 
@@ -358,11 +441,13 @@ class DatabaseConnection:
                 "qtd_documentos_inconsistentes": len(documentos_inconsistentes),
                 "faturamento": float(faturamento_decimal),
                 "tem_movimento": faturamento_decimal > 0,
+                "ano_apresentacao": self.ano_apresentacao,
                 "ano_referencia": self.ano_referencia,
+                "ano_inicio_regra": ano_inicio_regra,
                 "status_codigo": status,
                 "motivo_curto": motivo_curto,
                 "diagnostico": diagnostico,
-                "conclusao_definitiva": status in {"OBRIGADA_2026", "DISPENSADA"},
+                "conclusao_definitiva": status in {"OBRIGADA", "DISPENSADA"},
             }
         )
         return empresa
@@ -583,14 +668,13 @@ class DatabaseConnection:
             ]
 
             ordem_status = {
-                "OBRIGADA_2026": 1,
+                "OBRIGADA": 1,
                 "DADOS_INCONSISTENTES": 2,
                 "DADOS_INSUFICIENTES": 3,
                 "REVISAO_MANUAL": 4,
-                "FASEAMENTO_2027": 5,
-                "FASEAMENTO_2028": 6,
-                "DISPENSA_PROVAVEL": 7,
-                "DISPENSADA": 8,
+                "FASEAMENTO_FUTURO": 5,
+                "DISPENSA_PROVAVEL": 6,
+                "DISPENSADA": 7,
             }
             resultados.sort(
                 key=lambda item: (

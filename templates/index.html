@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel de Auditoria E-BEF</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='auditcon.png') }}">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -30,14 +32,27 @@
                 <p id="ultimaAtualizacao" class="text-xs text-slate-400 mt-1">Aguardando atualização...</p>
             </div>
 
-            <div class="flex flex-col sm:flex-row gap-2">
-                <button type="button" onclick="exportarCsv()"
-                        class="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-sm font-medium shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-end gap-2">
+                <div>
+                    <label for="anoApresentacao" class="block text-xs font-semibold text-slate-600 mb-1">
+                        Ano de apresentação
+                    </label>
+                    <select id="anoApresentacao"
+                            class="min-w-52 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        {% for ano in anos_disponiveis %}
+                        <option value="{{ ano }}" {% if ano == ano_apresentacao_padrao %}selected{% endif %}>
+                            {{ ano }} — receita {{ ano - 1 }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button id="exportarCsvBtn" type="button" onclick="exportarCsv()" disabled
+                        class="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-sm font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                     Exportar CSV
                 </button>
-                <button type="button" onclick="fetchDados()"
-                        class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium shadow-sm">
-                    Atualizar consulta
+                <button id="executarAuditoriaBtn" type="button" onclick="fetchDados()"
+                        class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-wait">
+                    Executar auditoria
                 </button>
             </div>
         </header>
@@ -48,7 +63,7 @@
                 <p id="cardTotal" class="text-2xl font-bold mt-1 text-slate-950">0</p>
             </article>
             <article class="bg-white border border-red-200 rounded-xl p-4 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-wide text-red-600">Obrigadas 2026</p>
+                <p id="cardObrigadasTitulo" class="text-xs font-semibold uppercase tracking-wide text-red-600">Obrigadas</p>
                 <p id="cardObrigadas" class="text-2xl font-bold mt-1 text-red-700">0</p>
             </article>
             <article class="bg-white border border-amber-200 rounded-xl p-4 shadow-sm">
@@ -56,7 +71,7 @@
                 <p id="cardPendencias" class="text-2xl font-bold mt-1 text-amber-700">0</p>
             </article>
             <article class="bg-white border border-blue-200 rounded-xl p-4 shadow-sm">
-                <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">Faseamento</p>
+                <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">Faseamento futuro</p>
                 <p id="cardFaseamento" class="text-2xl font-bold mt-1 text-blue-700">0</p>
             </article>
             <article class="bg-white border border-emerald-200 rounded-xl p-4 shadow-sm col-span-2 lg:col-span-1">
@@ -92,7 +107,7 @@
                 </article>
                 <article class="rounded border border-blue-100/80 bg-white/50 p-2.5">
                     <p class="text-[10px] font-bold uppercase tracking-wider text-blue-800">3. Receita do ano anterior</p>
-                    <p class="text-xs text-blue-900/80 mt-1 leading-relaxed">Sem sócio PJ, compara a receita estimada com R$ 78 milhões e R$ 4,8 milhões para indicar o faseamento.</p>
+                    <p class="text-xs text-blue-900/80 mt-1 leading-relaxed">Sem sócio PJ, compara a receita estimada de <span id="mapaAnoReceita" class="font-semibold">—</span> com R$ 78 milhões e R$ 4,8 milhões para aplicar a etapa vigente no ano selecionado.</p>
                 </article>
             </div>
 
@@ -114,12 +129,11 @@
                     <label for="statusFilter" class="block text-xs font-semibold text-slate-600 mb-1">Situação</label>
                     <select id="statusFilter" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
                         <option value="">Todas</option>
-                        <option value="OBRIGADA_2026">Obrigada em 2026</option>
+                        <option id="statusObrigadaOption" value="OBRIGADA">Obrigada</option>
                         <option value="DADOS_INCONSISTENTES">Dados inconsistentes</option>
                         <option value="DADOS_INSUFICIENTES">Dados insuficientes</option>
                         <option value="REVISAO_MANUAL">Revisão manual</option>
-                        <option value="FASEAMENTO_2027">Faseamento 2027</option>
-                        <option value="FASEAMENTO_2028">Faseamento 2028</option>
+                        <option value="FASEAMENTO_FUTURO">Faseamento futuro</option>
                         <option value="DISPENSA_PROVAVEL">Dispensa provável</option>
                         <option value="DISPENSADA">Dispensada</option>
                     </select>
@@ -173,7 +187,7 @@
                         </tr>
                     </thead>
                     <tbody id="tableBody" class="divide-y divide-slate-200">
-                        <tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Carregando dados...</td></tr>
+                        <tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Selecione o ano e clique em Executar auditoria.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -241,14 +255,53 @@
             }).format(new Date(valor));
         }
 
+        function getAnoSelecionado() {
+            return Number(document.getElementById('anoApresentacao').value);
+        }
+
+        function atualizarContextoAnoSelecionado() {
+            const anoApresentacao = getAnoSelecionado();
+            const anoReferencia = anoApresentacao - 1;
+
+            document.getElementById('anoBadge').textContent =
+                `e-BEF ${anoApresentacao} • Receita-base ${anoReferencia}`;
+            document.getElementById('cardObrigadasTitulo').textContent =
+                `Obrigadas ${anoApresentacao}`;
+            document.getElementById('statusObrigadaOption').textContent =
+                `Obrigada em ${anoApresentacao}`;
+            document.getElementById('mapaAnoReceita').textContent = anoReferencia;
+        }
+
+        function limparResultadosParaNovoAno() {
+            empresasData = [];
+            currentFilteredData = [];
+            metaRelatorio = {};
+            currentPage = 1;
+
+            document.getElementById('cardTotal').textContent = '0';
+            document.getElementById('cardObrigadas').textContent = '0';
+            document.getElementById('cardPendencias').textContent = '0';
+            document.getElementById('cardFaseamento').textContent = '0';
+            document.getElementById('cardDispensa').textContent = '0';
+            document.getElementById('ultimaAtualizacao').textContent =
+                'Ano selecionado. Clique em Executar auditoria.';
+            document.getElementById('tableBody').innerHTML =
+                '<tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Selecione o ano e clique em Executar auditoria.</td></tr>';
+            document.getElementById('paginationInfo').textContent = 'Aguardando consulta...';
+            document.getElementById('prevBtn').disabled = true;
+            document.getElementById('nextBtn').disabled = true;
+            document.getElementById('exportarCsvBtn').disabled = true;
+            atualizarContextoAnoSelecionado();
+        }
+
         function getStatusBadge(status) {
+            const anoApresentacao = metaRelatorio.ano_apresentacao || getAnoSelecionado();
             const badges = {
-                OBRIGADA_2026: ['Obrigada 2026', 'bg-red-100 text-red-800 border-red-200'],
+                OBRIGADA: [`Obrigada ${anoApresentacao}`, 'bg-red-100 text-red-800 border-red-200'],
                 DADOS_INCONSISTENTES: ['Dados inconsistentes', 'bg-amber-100 text-amber-900 border-amber-200'],
                 DADOS_INSUFICIENTES: ['Dados insuficientes', 'bg-slate-100 text-slate-700 border-slate-200'],
                 REVISAO_MANUAL: ['Revisão manual', 'bg-violet-100 text-violet-800 border-violet-200'],
-                FASEAMENTO_2027: ['Faseamento 2027', 'bg-blue-100 text-blue-800 border-blue-200'],
-                FASEAMENTO_2028: ['Faseamento 2028', 'bg-cyan-100 text-cyan-800 border-cyan-200'],
+                FASEAMENTO_FUTURO: ['Faseamento futuro', 'bg-blue-100 text-blue-800 border-blue-200'],
                 DISPENSA_PROVAVEL: ['Dispensa provável', 'bg-teal-100 text-teal-800 border-teal-200'],
                 DISPENSADA: ['Dispensada', 'bg-emerald-100 text-emerald-800 border-emerald-200']
             };
@@ -310,10 +363,24 @@
 
         async function fetchDados() {
             const tbody = document.getElementById('tableBody');
+            const botao = document.getElementById('executarAuditoriaBtn');
+            const anoApresentacao = getAnoSelecionado();
+
+            if (!anoApresentacao) {
+                alert('Selecione o ano de apresentação do e-BEF.');
+                return;
+            }
+
             tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Atualizando dados...</td></tr>';
+            botao.disabled = true;
+            botao.textContent = 'Executando...';
+            document.getElementById('exportarCsvBtn').disabled = true;
 
             try {
-                const response = await fetch('/api/ebef', { cache: 'no-store' });
+                const response = await fetch(
+                    `/api/ebef?ano_apresentacao=${encodeURIComponent(anoApresentacao)}`,
+                    { cache: 'no-store' }
+                );
                 const payload = await response.json();
                 if (!response.ok) throw new Error(payload.error || 'Erro na API');
 
@@ -324,23 +391,35 @@
                 atualizarCabecalho();
                 atualizarCartoes();
                 aplicarFiltros();
+                document.getElementById('exportarCsvBtn').disabled = empresasData.length === 0;
             } catch (error) {
                 tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-10 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`;
+                document.getElementById('ultimaAtualizacao').textContent = 'A consulta não foi concluída.';
+            } finally {
+                botao.disabled = false;
+                botao.textContent = 'Executar auditoria';
             }
         }
 
         function atualizarCabecalho() {
+            const anoApresentacao = metaRelatorio.ano_apresentacao || getAnoSelecionado();
             const anoReferencia = metaRelatorio.ano_referencia || 'não informado';
-            document.getElementById('anoBadge').textContent = `Receita estimada: ${anoReferencia}`;
+            document.getElementById('anoBadge').textContent =
+                `e-BEF ${anoApresentacao} • Receita-base ${anoReferencia}`;
+            document.getElementById('cardObrigadasTitulo').textContent =
+                `Obrigadas ${anoApresentacao}`;
+            document.getElementById('statusObrigadaOption').textContent =
+                `Obrigada em ${anoApresentacao}`;
+            document.getElementById('mapaAnoReceita').textContent = anoReferencia;
             document.getElementById('ultimaAtualizacao').textContent = `Última consulta: ${formatarDataHora(metaRelatorio.gerado_em)}`;
         }
 
         function atualizarCartoes() {
             const contar = (...status) => empresasData.filter(emp => status.includes(emp.status_codigo)).length;
             document.getElementById('cardTotal').textContent = empresasData.length.toLocaleString('pt-BR');
-            document.getElementById('cardObrigadas').textContent = contar('OBRIGADA_2026').toLocaleString('pt-BR');
+            document.getElementById('cardObrigadas').textContent = contar('OBRIGADA').toLocaleString('pt-BR');
             document.getElementById('cardPendencias').textContent = contar('DADOS_INCONSISTENTES', 'DADOS_INSUFICIENTES', 'REVISAO_MANUAL').toLocaleString('pt-BR');
-            document.getElementById('cardFaseamento').textContent = contar('FASEAMENTO_2027', 'FASEAMENTO_2028').toLocaleString('pt-BR');
+            document.getElementById('cardFaseamento').textContent = contar('FASEAMENTO_FUTURO').toLocaleString('pt-BR');
             document.getElementById('cardDispensa').textContent = contar('DISPENSA_PROVAVEL', 'DISPENSADA').toLocaleString('pt-BR');
         }
 
@@ -467,6 +546,10 @@
                                 <h4 class="font-bold text-slate-900 mb-3">Dados considerados</h4>
                                 <dl class="space-y-3 text-sm">
                                     <div>
+                                        <dt class="text-slate-500">Ano de apresentação do e-BEF</dt>
+                                        <dd class="font-medium">${escapeHtml(emp.ano_apresentacao)}</dd>
+                                    </div>
+                                    <div>
                                         <dt class="text-slate-500">CNPJ</dt>
                                         <dd class="font-medium">${escapeHtml(cnpjFormatado)}</dd>
                                     </div>
@@ -537,7 +620,8 @@
             const cabecalho = [
                 'Status', 'Código principal', 'Códigos agrupados', 'Razão Social', 'CNPJ exibido',
                 'Raiz CNPJ', 'Natureza jurídica', 'Estabelecimentos', 'Sócios PJ',
-                'Receita estimada', 'Ano da receita', 'Motivo', 'Diagnóstico'
+                'Receita estimada', 'Ano de apresentação', 'Ano da receita',
+                'Início da regra', 'Motivo', 'Diagnóstico'
             ];
             const linhas = currentFilteredData.map(emp => [
                 emp.status_codigo,
@@ -550,7 +634,9 @@
                 emp.qtd_estabelecimentos,
                 emp.qtd_socios_pj,
                 Number(emp.faturamento || 0).toFixed(2).replace('.', ','),
+                emp.ano_apresentacao,
                 emp.ano_referencia,
+                emp.ano_inicio_regra || '',
                 emp.motivo_curto,
                 emp.diagnostico
             ]);
@@ -562,7 +648,8 @@
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `auditoria_ebef_${new Date().toISOString().slice(0, 10)}.csv`;
+            const anoApresentacao = metaRelatorio.ano_apresentacao || getAnoSelecionado();
+            link.download = `auditoria_ebef_${anoApresentacao}_${new Date().toISOString().slice(0, 10)}.csv`;
             link.click();
             URL.revokeObjectURL(url);
         }
@@ -584,8 +671,11 @@
             currentPage = 1;
             renderTable();
         });
+        document.getElementById('anoApresentacao').addEventListener('change', () => {
+            limparResultadosParaNovoAno();
+        });
 
-        window.addEventListener('load', fetchDados);
+        window.addEventListener('load', limparResultadosParaNovoAno);
     </script>
 </body>
 </html>

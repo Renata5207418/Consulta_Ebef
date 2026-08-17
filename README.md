@@ -1,6 +1,6 @@
 # 📊 Auditor e-BEF (Formulário Digital de Beneficiários Finais)
 
-![Demonstração do Painel Auditor e-BEF](img/tabela_consulta.gif)
+![Demonstração do Painel Auditor e-BEF](static/tabela_consulta.gif)
 
 Um script automatizado em Python para analisar, auditar e classificar a carteira de clientes de escritórios contábeis quanto à obrigatoriedade de entrega do **e-BEF (Instrução Normativa RFB nº 2.290/2025)**.
 
