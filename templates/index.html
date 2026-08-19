@@ -208,6 +208,19 @@
         </section>
     </main>
 
+    <div id="qsaModal" class="hidden fixed inset-0 z-50 bg-slate-950/50 p-4 items-center justify-center" onclick="fecharModalQsa(event)">
+        <div class="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
+            <div class="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+                <div>
+                    Diverg.<h3 class="font-bold text-slate-950">Comparação do quadro societário</h3>
+                    <p id="qsaModalEmpresa" class="text-sm text-slate-500"></p>
+                </div>
+                <button type="button" onclick="fecharModalQsa()" class="rounded-lg px-3 py-1.5 text-xl text-slate-500 hover:bg-slate-100">×</button>
+            </div>
+            <div id="qsaModalConteudo" class="p-5"></div>
+        </div>
+    </div>
+
     <script>
         let empresasData = [];
         let currentFilteredData = [];
@@ -332,12 +345,347 @@
                 </li>`).join('');
         }
 
-        function renderSocios(socios) {
+        function normalizarNomeSocio(valor) {
+            return String(valor || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toUpperCase()
+                .replace(/[^A-Z0-9]+/g, ' ')
+                .trim()
+                .replace(/\s+/g, ' ')
+                .replace(/\bS A$/, 'SA');
+        }
+
+        function compararQsa(emp) {
+            const receita = emp.receitaws;
+            const qsaReceita = Array.isArray(receita?.qsa) ? receita.qsa : [];
+
+            if (qsaReceita.length === 0) return null;
+
+            const sociosDominio = Array.isArray(emp.socios) ? emp.socios : [];
+            const mapaDominio = new Map();
+            const mapaReceita = new Map();
+
+            sociosDominio.forEach(socio => {
+                const chave = normalizarNomeSocio(socio.nome);
+                if (chave && !mapaDominio.has(chave)) {
+                    mapaDominio.set(chave, socio);
+                }
+            });
+
+            qsaReceita.forEach(socio => {
+                const chave = normalizarNomeSocio(socio.nome);
+                if (chave && !mapaReceita.has(chave)) {
+                    mapaReceita.set(chave, socio);
+                }
+            });
+
+            const todasAsChaves = new Set([
+                ...mapaDominio.keys(),
+                ...mapaReceita.keys()
+            ]);
+
+            const linhas = Array.from(todasAsChaves).map(chave => {
+                const socioDominio = mapaDominio.get(chave);
+                const socioReceita = mapaReceita.get(chave);
+
+                const naDominio = Boolean(socioDominio);
+                const naReceita = Boolean(socioReceita);
+
+                let resultado = 'COINCIDENTE';
+
+                if (naDominio && !naReceita) {
+                    resultado = 'SOMENTE_DOMINIO';
+                } else if (!naDominio && naReceita) {
+                    resultado = 'SOMENTE_RECEITA';
+                }
+
+                return {
+                    nome: socioDominio?.nome || socioReceita?.nome || 'Nome não informado',
+                    documento:
+                        socioDominio?.documento ||
+                        socioDominio?.inscricao_original ||
+                        '',
+                    qualificacao:
+                        socioReceita?.qualificacao ||
+                        socioReceita?.qual ||
+                        socioDominio?.qualificacao_receitaws ||
+                        '',
+                    paisOrigem:
+                        socioReceita?.pais_origem ||
+                        socioDominio?.pais_origem_receitaws ||
+                        '',
+                    naDominio,
+                    naReceita,
+                    resultado
+                };
+            });
+
+            const ordemResultado = {
+                SOMENTE_DOMINIO: 1,
+                SOMENTE_RECEITA: 2,
+                COINCIDENTE: 3
+            };
+
+            linhas.sort((a, b) => {
+                const diferencaOrdem =
+                    ordemResultado[a.resultado] - ordemResultado[b.resultado];
+
+                if (diferencaOrdem !== 0) return diferencaOrdem;
+
+                return a.nome.localeCompare(b.nome, 'pt-BR');
+            });
+
+            const coincidentes = linhas.filter(
+                item => item.resultado === 'COINCIDENTE'
+            ).length;
+
+            const somenteDominio = linhas.filter(
+                item => item.resultado === 'SOMENTE_DOMINIO'
+            ).length;
+
+            const somenteReceita = linhas.filter(
+                item => item.resultado === 'SOMENTE_RECEITA'
+            ).length;
+
+            return {
+                linhas,
+                coincidentes,
+                somenteDominio,
+                somenteReceita,
+                divergente: somenteDominio > 0 || somenteReceita > 0,
+                atualizadoEm:
+                    receita?.ultima_atualizacao_fonte ||
+                    receita?.ultima_atualizacao ||
+                    receita?.consultado_em,
+                comparacaoParcial: [2046, 2054].includes(
+                    Number(emp.codigo_natureza)
+                )
+            };
+        }
+
+        function renderAlertaQsa(emp) {
+            const comparacao = compararQsa(emp);
+
+            if (!comparacao?.divergente) return '';
+
+            return `
+                <button
+                    type="button"
+                    onclick="event.stopPropagation(); abrirModalQsa('${escapeHtml(emp.codigo)}')"
+                    title="QSA diferente entre Domínio e ReceitaWS — clique para revisar"
+                    class="inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 animate-pulse"
+                >
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                            fill="currentColor"
+                            d="M12 2 1 21h22L12 2Zm0 5.5c.6 0 1 .4 1 1v5a1 1 0 1 1-2 0v-5c0-.6.4-1 1-1Zm0 10.5a1.25 1.25 0 1 1 0-2.5A1.25 1.25 0 0 1 12 18Z"
+                        />
+                    </svg>
+                    QSA divergente
+                </button>
+            `;
+        }
+
+        function abrirModalQsa(codigo) {
+            const emp = empresasData.find(
+                item => String(item.codigo) === String(codigo)
+            );
+
+            const comparacao = emp ? compararQsa(emp) : null;
+
+            if (!emp || !comparacao) return;
+
+            const renderPresenca = (presente, fonte) => {
+                if (!presente) {
+                    return `
+                        <span
+                            class="inline-flex h-6 w-6 items-center justify-center
+                                   rounded-full bg-slate-100 text-slate-400"
+                            title="Não localizado na ${escapeHtml(fonte)}"
+                        >
+                            —
+                        </span>
+                    `;
+                }
+
+                return `
+                    <span
+                        class="inline-flex h-6 w-6 items-center justify-center
+                               rounded-full bg-emerald-100 text-emerald-700 font-bold"
+                        title="Localizado na ${escapeHtml(fonte)}"
+                    >
+                        ✓
+                    </span>
+                `;
+            };
+
+            const renderResultado = resultado => {
+                const configuracoes = {
+                    COINCIDENTE: {
+                        texto: 'Coincidente',
+                        classe: 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    },
+                    SOMENTE_DOMINIO: {
+                        texto: 'Somente Domínio',
+                        classe: 'bg-amber-100 text-amber-900 border-amber-200'
+                    },
+                    SOMENTE_RECEITA: {
+                        texto: 'Somente ReceitaWS',
+                        classe: 'bg-blue-100 text-blue-800 border-blue-200'
+                    }
+                };
+
+                const configuracao = configuracoes[resultado];
+
+                return `
+                    <span class="inline-flex rounded-md border px-2 py-1
+                                 text-[11px] font-semibold leading-tight
+                                 ${configuracao.classe}">
+                        ${configuracao.texto}
+                    </span>
+                `;
+            };
+
+            document.getElementById('qsaModalEmpresa').textContent =
+                `${emp.codigo} — ${emp.razao_social}`;
+
+            document.getElementById('qsaModalConteudo').innerHTML = `
+                <div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3
+                            text-sm text-red-900">
+                    <p>
+                        A comparação abaixo utiliza os nomes normalizados encontrados
+                        nas duas fontes. As divergências representam um alerta para
+                        revisão cadastral e não alteram a conclusão do e-BEF.
+                    </p>
+
+                    ${comparacao.comparacaoParcial ? `
+                        <p class="mt-2 font-semibold">
+                            Para sociedades anônimas, a ReceitaWS pode apresentar
+                            administradores, diretores e conselheiros. Portanto,
+                            a comparação do quadro pode ser parcial.
+                        </p>
+                    ` : ''}
+                </div>
+
+                <div class="mb-4 flex flex-wrap gap-2">
+                    <span class="rounded-full border border-emerald-200 bg-emerald-50
+                                 px-3 py-1 text-xs font-semibold text-emerald-800">
+                        ${comparacao.coincidentes} coincidente(s)
+                    </span>
+
+                    <span class="rounded-full border border-amber-200 bg-amber-50
+                                 px-3 py-1 text-xs font-semibold text-amber-900">
+                        ${comparacao.somenteDominio} somente na Domínio
+                    </span>
+
+                    <span class="rounded-full border border-blue-200 bg-blue-50
+                                 px-3 py-1 text-xs font-semibold text-blue-800">
+                        ${comparacao.somenteReceita} somente na ReceitaWS
+                    </span>
+                </div>
+
+                <p class="mb-4 text-sm text-slate-600">
+                    <b>Última atualização informada pela ReceitaWS:</b>
+                    ${escapeHtml(formatarDataHora(comparacao.atualizadoEm))}
+                </p>
+
+                <div class="max-h-[52vh] overflow-y-auto overflow-x-hidden
+                            rounded-lg border border-slate-200">
+                    <table class="w-full table-fixed text-sm">
+                        <colgroup>
+                            <col style="width: 56%">
+                            <col style="width: 11%">
+                            <col style="width: 11%">
+                            <col style="width: 22%">
+                        </colgroup>
+
+                        <thead class="sticky top-0 z-10 bg-slate-50
+                                      border-b border-slate-200">
+                            <tr class="text-left text-xs font-semibold uppercase
+                                       tracking-wide text-slate-500">
+                                <th class="px-4 py-3">Pessoa / qualificação</th>
+                                <th class="px-2 py-3 text-center">Domínio</th>
+                                <th class="px-2 py-3 text-center">ReceitaWS</th>
+                                <th class="px-3 py-3">Resultado</th>
+                            </tr>
+                        </thead>
+
+                        <tbody class="divide-y divide-slate-100">
+                            ${comparacao.linhas.map(item => `
+                                <tr class="${
+                                    item.resultado === 'COINCIDENTE'
+                                        ? 'bg-white'
+                                        : 'bg-amber-50/20'
+                                }">
+                                    <td class="px-4 py-3 align-top">
+                                        <p class="font-medium text-slate-800">
+                                            ${escapeHtml(item.nome)}
+                                        </p>
+
+                                        ${item.documento ? `
+                                            <p class="mt-0.5 text-xs text-slate-500">
+                                                ${escapeHtml(formatarDocumento(item.documento))}
+                                            </p>
+                                        ` : ''}
+
+                                        ${item.qualificacao ? `
+                                            <p class="mt-1 text-xs font-medium text-blue-700">
+                                                ${escapeHtml(item.qualificacao)}
+                                            </p>
+                                        ` : ''}
+
+                                        ${item.paisOrigem ? `
+                                            <p class="mt-0.5 text-xs font-semibold text-violet-700">
+                                                País de origem:
+                                                ${escapeHtml(item.paisOrigem)}
+                                            </p>
+                                        ` : ''}
+                                    </td>
+
+                                    <td class="px-2 py-3 text-center align-middle">
+                                        ${renderPresenca(item.naDominio, 'Domínio')}
+                                    </td>
+
+                                    <td class="px-2 py-3 text-center align-middle">
+                                        ${renderPresenca(item.naReceita, 'ReceitaWS')}
+                                    </td>
+
+                                    <td class="px-3 py-3 align-middle">
+                                        ${renderResultado(item.resultado)}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            const modal = document.getElementById('qsaModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function fecharModalQsa(event) {
+            if (event && event.target !== event.currentTarget) return;
+
+            const modal = document.getElementById('qsaModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function renderSocios(socios, receitaws) {
             if (!socios || socios.length === 0) {
                 return '<p class="text-sm text-slate-500 italic">Nenhum sócio localizado no cadastro consultado.</p>';
             }
 
             return socios.map(socio => {
+                const correspondencias = (receitaws?.qsa || []).filter(item =>
+                    normalizarNomeSocio(item.nome) === normalizarNomeSocio(socio.nome)
+                );
+                const socioReceita = correspondencias.length === 1
+                    ? correspondencias[0]
+                    : null;
                 const tipoPJ = socio.tipo === 'PJ';
                 const invalido = socio.valido === false;
                 const tipoClasse = tipoPJ
@@ -346,12 +694,26 @@
                         ? 'bg-slate-100 text-slate-700 border-slate-200'
                         : 'bg-amber-50 text-amber-800 border-amber-200';
                 const validadeClasse = invalido ? 'text-amber-700 font-semibold' : 'text-slate-500';
+                const qualificacaoReceita = String(
+                    socioReceita?.qualificacao || socio.qualificacao_receitaws || ''
+                ).trim();
+                const paisOrigemReceita = String(
+                    socioReceita?.pais_origem || socio.pais_origem_receitaws || ''
+                ).trim();
+                const complementoReceita = `
+                    ${qualificacaoReceita
+                        ? `<p class="mt-1 text-xs font-medium text-blue-700">${escapeHtml(qualificacaoReceita)}</p>`
+                        : ''}
+                    ${paisOrigemReceita
+                        ? `<p class="mt-0.5 text-xs font-semibold text-violet-700">País de origem: ${escapeHtml(paisOrigemReceita)}</p>`
+                        : ''}`;
 
                 return `
                     <li class="py-2 border-b border-slate-100 last:border-b-0 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                         <div>
                             <p class="font-medium ${tipoPJ ? 'text-red-700' : 'text-slate-800'}">${escapeHtml(socio.nome)}</p>
                             <p class="text-sm text-slate-500">${escapeHtml(formatarDocumento(socio.documento || socio.inscricao_original))}</p>
+                            ${complementoReceita}
                         </div>
                         <div class="flex items-center gap-2">
                             <span class="px-2 py-0.5 rounded border text-xs font-semibold ${tipoClasse}">${escapeHtml(socio.tipo)}</span>
@@ -532,8 +894,11 @@
                                 </div>
 
                                 <div class="border border-slate-200 rounded-lg p-4 shadow-sm">
-                                    <h4 class="font-bold text-slate-900 mb-2">Quadro societário atual</h4>
-                                    <ul>${renderSocios(emp.socios)}</ul>
+                                    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                        <h4 class="font-bold text-slate-900">Quadro societário atual</h4>
+                                        ${renderAlertaQsa(emp)}
+                                    </div>
+                                    <ul>${renderSocios(emp.socios, emp.receitaws)}</ul>
                                 </div>
 
                                 <div class="border border-slate-200 rounded-lg p-4 shadow-sm">

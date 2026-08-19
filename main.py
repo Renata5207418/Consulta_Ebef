@@ -2,10 +2,9 @@ import logging
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
 from flask import Flask, jsonify, render_template, request
-
 from database.db_conection import DatabaseConnection
+from database.receitaws_cache import ReceitaWsCache
 
 
 app = Flask(__name__)
@@ -61,6 +60,21 @@ def api_ebef():
 
     try:
         dados = db.get_relatorio_ebef()
+        try:
+            # A ReceitaWS apenas acrescenta o país de origem do QSA disponível
+            # no cache local. Ela não altera a classificação jurídica do e-BEF.
+            dados = ReceitaWsCache().enriquecer_empresas(dados)
+        except Exception as exc:
+            logging.exception("Não foi possível ler o cache da ReceitaWS: %s", exc)
+            for empresa in dados:
+                empresa["receitaws"] = {
+                    "disponivel": False,
+                    "status_consulta": "INDISPONIVEL",
+                    "origem_qsa_status": "INDISPONIVEL",
+                    "possui_socio_internacional": False,
+                    "qsa": [],
+                    "paises": [],
+                }
         agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
         return jsonify(
             {
@@ -71,6 +85,7 @@ def api_ebef():
                     "ano_referencia": db.ano_referencia,
                     "gerado_em": agora.isoformat(),
                     "classificacao_preliminar": True,
+                    "receitaws_complementar": True,
                 },
             }
         )
