@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comunicação E-BEF</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='auditcon.png') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans text-slate-800">
+    <main class="max-w-[1500px] mx-auto p-4 md:p-8">
+        <nav class="mb-5 flex gap-2 border-b border-slate-200">
+            <a href="/" class="px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800">
+                Consulta e-BEF
+            </a>
+            <a href="/comunicacao" class="px-4 py-2.5 text-sm font-semibold border-b-2 border-blue-700 text-blue-700">
+                Comunicação e-BEF
+            </a>
+        </nav>
+
+        <header class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 mb-5">
+            <div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <h1 class="text-3xl font-bold text-slate-950">Comunicação e-BEF</h1>
+                    <span id="anoBadge" class="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold">
+                        Aguardando consulta
+                    </span>
+                </div>
+                <p class="text-slate-500 mt-1">Empresas selecionadas para comunicação e e-mails cadastrados na Domínio</p>
+                <p id="ultimaAtualizacao" class="text-xs text-slate-400 mt-1">Clique em Atualizar lista.</p>
+            </div>
+
+            <div class="flex flex-col sm:flex-row sm:items-end gap-2">
+                <div>
+                    <label for="anoApresentacao" class="block text-xs font-semibold text-slate-600 mb-1">Ano de apresentação</label>
+                    <select id="anoApresentacao" class="min-w-52 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        {% for ano in anos_disponiveis %}
+                        <option value="{{ ano }}" {% if ano == ano_apresentacao_padrao %}selected{% endif %}>{{ ano }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button id="atualizarBtn" type="button" onclick="fetchDados()"
+                        class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium shadow-sm disabled:opacity-60 disabled:cursor-wait">
+                    Atualizar lista
+                </button>
+            </div>
+        </header>
+
+        <section class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+            <article class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Na comunicação</p>
+                <p id="cardTotal" class="text-2xl font-bold mt-1 text-slate-950">0</p>
+            </article>
+            <article class="bg-white border border-blue-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-blue-600">Inclusões manuais</p>
+                <p id="cardManual" class="text-2xl font-bold mt-1 text-blue-700">0</p>
+            </article>
+            <article class="bg-white border border-emerald-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-emerald-600">Formato válido</p>
+                <p id="cardComEmail" class="text-2xl font-bold mt-1 text-emerald-700">0</p>
+            </article>
+            <article class="bg-white border border-amber-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-amber-600">Sem e-mail</p>
+                <p id="cardSemEmail" class="text-2xl font-bold mt-1 text-amber-700">0</p>
+            </article>
+            <article class="bg-white border border-red-200 rounded-xl p-4 shadow-sm">
+                <p class="text-xs font-semibold uppercase tracking-wide text-red-600">Formato inválido</p>
+                <p id="cardEmailInvalido" class="text-2xl font-bold mt-1 text-red-700">0</p>
+            </article>
+        </section>
+
+        <section class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="md:col-span-2">
+                    <label for="searchInput" class="block text-xs font-semibold text-slate-600 mb-1">Buscar empresa</label>
+                    <input type="text" id="searchInput" placeholder="Código, razão social, CNPJ ou e-mail..."
+                           class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="emailFilter" class="block text-xs font-semibold text-slate-600 mb-1">Situação do e-mail</label>
+                    <select id="emailFilter" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                        <option value="">Todos</option>
+                        <option value="VALIDO">Formato válido</option>
+                        <option value="SEM_EMAIL">Sem e-mail</option>
+                        <option value="INVALIDO">Formato inválido</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 mb-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <p id="selecionadosInfo" class="text-sm font-semibold text-slate-800">0 empresas selecionadas</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Somente empresas com e-mail válido e ainda não enviadas entram no lote.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="abrirModalInclusao()"
+                            class="px-4 py-2 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm font-semibold">
+                        + Incluir empresa
+                    </button>
+                    <button id="enviarSelecionadosBtn" type="button" onclick="abrirModalLote()" disabled
+                            class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        Enviar selecionados
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div class="overflow-x-auto max-h-[65vh] overflow-y-auto">
+                <table class="w-full min-w-[1050px] table-fixed text-[13px]">
+                    <colgroup>
+                        <col style="width:3.5%">
+                        <col style="width:5%">
+                        <col style="width:20%">
+                        <col style="width:11%">
+                        <col style="width:21%">
+                        <col style="width:10.5%">
+                        <col style="width:8%">
+                        <col style="width:8.5%">
+                        <col style="width:12.5%">
+                    </colgroup>
+                    <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                        <tr class="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="px-2 py-3 text-center">
+                                <input id="selecionarTodosCheckbox" type="checkbox" onchange="alternarSelecionarTodos(this.checked)"
+                                       title="Selecionar todas as empresas aptas exibidas"
+                                       class="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500">
+                            </th>
+                            <th class="px-2 py-3">Cód.</th>
+                            <th class="px-2 py-3">Razão social</th>
+                            <th class="px-2 py-3">CNPJ</th>
+                            <th class="px-2 py-3">E-mail Domínio</th>
+                            <th class="px-2 py-3">Situação do e-mail</th>
+                            <th class="px-2 py-3">Origem</th>
+                            <th class="px-2 py-3">Envio</th>
+                            <th class="px-2 py-3 text-center">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-200">
+                        <tr>
+                            <td colspan="9" class="px-6 py-10 text-center text-slate-500">
+                                Clique em Atualizar lista para consultar as empresas da comunicação.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <footer class="bg-slate-50 px-5 py-3 border-t border-slate-200">
+                <p id="resultadoInfo" class="text-sm text-slate-700">Aguardando consulta...</p>
+            </footer>
+        </section>
+    </main>
+
+    <div id="inclusaoModal" class="hidden fixed inset-0 z-50 bg-slate-950/50 p-4 items-center justify-center"
+         onclick="fecharModalInclusao(event)">
+        <div class="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl"
+             onclick="event.stopPropagation()">
+            <div class="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+                <div>
+                    <h3 class="font-bold text-lg text-slate-950">Incluir empresa na comunicação</h3>
+                    <p class="text-sm text-slate-500 mt-0.5">A inclusão vale somente para o ano selecionado e não altera a classificação da auditoria.</p>
+                </div>
+                <button type="button" onclick="fecharModalInclusao()"
+                        class="rounded-lg px-3 py-1.5 text-xl text-slate-500 hover:bg-slate-100">×</button>
+            </div>
+
+            <div class="p-5 space-y-4">
+                <div class="flex gap-2">
+                    <input id="buscaInclusaoInput" type="text" placeholder="Código, razão social, CNPJ ou e-mail..."
+                           class="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button id="buscarInclusaoBtn" type="button" onclick="buscarEmpresasInclusao()"
+                            class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold">
+                        Buscar
+                    </button>
+                </div>
+
+                <div id="resultadoInclusao" class="rounded-lg border border-slate-200 divide-y divide-slate-100">
+                    <div class="px-4 py-8 text-center text-sm text-slate-500">
+                        Pesquise a matriz ativa que deseja incluir.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="envioModal" class="hidden fixed inset-0 z-50 bg-slate-950/50 p-4 items-center justify-center"
+         onclick="fecharModalEnvio(event)">
+        <div class="w-full max-w-5xl max-h-[94vh] overflow-y-auto rounded-xl bg-white shadow-2xl"
+             onclick="event.stopPropagation()">
+            <div class="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+                <div>
+                    <h3 class="font-bold text-lg text-slate-950">Confirmar comunicação e-BEF</h3>
+                    <p id="envioModalResumo" class="text-sm text-slate-500 mt-0.5"></p>
+                </div>
+                <button type="button" onclick="fecharModalEnvio()"
+                        class="rounded-lg px-3 py-1.5 text-xl text-slate-500 hover:bg-slate-100">×</button>
+            </div>
+
+            <div class="p-5 space-y-5">
+                <section>
+                    <h4 class="text-sm font-bold text-slate-900 mb-2">Destinatários</h4>
+                    <div id="envioModalDestinatarios"
+                         class="max-h-52 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100"></div>
+                </section>
+
+                <section class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Assunto</p>
+                    <p id="envioModalAssunto" class="mt-1 font-semibold text-slate-900"></p>
+                </section>
+
+                <section>
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <h4 class="text-sm font-bold text-slate-900">Prévia do e-mail</h4>
+                        <span id="envioModalAvisoPersonalizacao" class="hidden text-xs font-medium text-blue-700">
+                            Prévia do primeiro e-mail do lote. Os demais serão personalizados da mesma forma.
+                        </span>
+                    </div>
+                    <div id="envioModalMensagem"
+                         class="max-h-[55vh] overflow-y-auto rounded-lg border border-slate-200 bg-[#f5f5f5] p-4"></div>
+                </section>
+
+                <section class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Anexo</p>
+                    <p id="envioModalAnexo" class="mt-1 text-sm font-medium text-slate-800"></p>
+                </section>
+            </div>
+
+            <div class="sticky bottom-0 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+                <button type="button" onclick="fecharModalEnvio()"
+                        class="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-sm font-medium">
+                    Cancelar
+                </button>
+                <button id="confirmarEnvioBtn" type="button" onclick="confirmarEnvioReal()"
+                        class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold shadow-sm">
+                    Confirmar envio
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="resultadoEnvioModal" class="hidden fixed inset-0 z-[70] bg-slate-950/50 p-4 items-center justify-center"
+         onclick="fecharResultadoEnvio(event)">
+        <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden" onclick="event.stopPropagation()">
+            <div class="p-6 text-center">
+                <div id="resultadoEnvioIcone" class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" class="h-7 w-7">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4 4L19 7"/>
+                    </svg>
+                </div>
+                <h3 id="resultadoEnvioTitulo" class="text-lg font-bold text-slate-950">Envio concluído</h3>
+                <p id="resultadoEnvioMensagem" class="mt-2 text-sm text-slate-600"></p>
+                <div id="resultadoEnvioDetalhes" class="mt-4 hidden rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm text-slate-700"></div>
+            </div>
+            <div class="border-t border-slate-200 bg-slate-50 px-5 py-4 flex justify-end">
+                <button type="button" onclick="fecharResultadoEnvio()"
+                        class="px-5 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold shadow-sm">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let empresasData = [];
+        let empresasFiltradas = [];
+        let metaComunicacao = {};
+        let empresasSelecionadas = new Set();
+        let empresasEnvioAtual = [];
+        let forcarReenvioAtual = false;
+        let candidatasInclusaoAtuais = new Map();
+
+        const CHAVE_ANO_ATIVO = 'ebef_ano_ativo';
+        const CHAVE_CONSULTA_DADOS = 'ebef_consulta_dados_v1';
+        const CHAVE_COMUNICACAO_DADOS = 'ebef_comunicacao_dados_v1';
+        const CHAVE_COMUNICACAO_UI = 'ebef_comunicacao_ui_v1';
+        const CHAVE_COMUNICACAO_PENDENTE = 'ebef_comunicacao_pendente';
+        const CHAVE_COMUNICACAO_SELECAO = 'ebef_comunicacao_selecao_v1';
+
+        function empresaAptaParaEnvio(empresa) {
+            return Boolean(
+                empresa && empresa.email_preenchido && empresa.email_valido && String(empresa.email || '').trim()
+            );
+        }
+
+        function empresaSelecionavelEmLote(empresa) {
+            return empresaAptaParaEnvio(empresa) && !empresa.ja_enviado;
+        }
+
+        function getEnvioBadge(empresa) {
+            if (empresa.ja_enviado) {
+                return `
+                    <div>
+                        <span class="inline-flex px-2 py-1 rounded-md border font-semibold text-xs bg-emerald-100 text-emerald-800 border-emerald-200">Enviado</span>
+                        <p class="mt-1 text-[11px] text-slate-500">${escapeHtml(formatarDataHora(empresa.ultimo_envio_em))}</p>
+                    </div>`;
+            }
+
+            if (empresa.ultima_tentativa_status === 'TESTE') {
+                return `
+                    <div>
+                        <span class="inline-flex px-2 py-1 rounded-md border font-semibold text-xs bg-blue-100 text-blue-800 border-blue-200">Teste enviado</span>
+                        <p class="mt-1 text-[11px] text-slate-500">${escapeHtml(formatarDataHora(empresa.ultima_tentativa_em))}</p>
+                    </div>`;
+            }
+
+            if (empresa.ultima_tentativa_status === 'ERRO') {
+                return `
+                    <div>
+                        <span class="inline-flex px-2 py-1 rounded-md border font-semibold text-xs bg-red-100 text-red-800 border-red-200"
+                              title="${escapeHtml(empresa.ultimo_erro || 'Falha no envio')}">Falha</span>
+                        <p class="mt-1 text-[11px] text-slate-500">${escapeHtml(formatarDataHora(empresa.ultima_tentativa_em))}</p>
+                    </div>`;
+            }
+
+            return '<span class="inline-flex px-2 py-1 rounded-md border font-semibold text-xs bg-slate-100 text-slate-700 border-slate-200">Não enviado</span>';
+        }
+
+        function salvarSelecaoNaSessao() {
+            try {
+                sessionStorage.setItem(CHAVE_COMUNICACAO_SELECAO, JSON.stringify(Array.from(empresasSelecionadas)));
+            } catch (error) {
+                console.warn('Não foi possível preservar a seleção da Comunicação e-BEF:', error);
+            }
+        }
+
+        function restaurarSelecaoDaSessao() {
+            try {
+                const selecaoSalva = JSON.parse(sessionStorage.getItem(CHAVE_COMUNICACAO_SELECAO) || '[]');
+                empresasSelecionadas = new Set(Array.isArray(selecaoSalva) ? selecaoSalva.map(String) : []);
+            } catch (error) {
+                empresasSelecionadas = new Set();
+                console.warn('Não foi possível restaurar a seleção da Comunicação e-BEF:', error);
+            }
+        }
+
+        function sincronizarSelecaoComDados() {
+            const codigosAptos = new Set(
+                empresasData.filter(empresaSelecionavelEmLote).map(empresa => String(empresa.codigo))
+            );
+            empresasSelecionadas = new Set(
+                Array.from(empresasSelecionadas).filter(codigo => codigosAptos.has(String(codigo)))
+            );
+            salvarSelecaoNaSessao();
+        }
+
+        function alternarEmpresaSelecionada(codigo, selecionada) {
+            const chave = String(codigo);
+            const empresa = empresasData.find(item => String(item.codigo) === chave);
+
+            if (selecionada && empresaSelecionavelEmLote(empresa)) {
+                empresasSelecionadas.add(chave);
+            } else {
+                empresasSelecionadas.delete(chave);
+            }
+
+            salvarSelecaoNaSessao();
+            atualizarBarraSelecao();
+        }
+
+        function alternarSelecionarTodos(selecionado) {
+            const aptasVisiveis = empresasFiltradas.filter(empresaSelecionavelEmLote);
+            aptasVisiveis.forEach(empresa => {
+                const chave = String(empresa.codigo);
+                selecionado ? empresasSelecionadas.add(chave) : empresasSelecionadas.delete(chave);
+            });
+
+            salvarSelecaoNaSessao();
+            renderTable();
+        }
+
+        function atualizarBarraSelecao() {
+            const total = empresasSelecionadas.size;
+            document.getElementById('selecionadosInfo').textContent =
+                total === 1 ? '1 empresa selecionada' : `${total.toLocaleString('pt-BR')} empresas selecionadas`;
+            document.getElementById('enviarSelecionadosBtn').disabled = total === 0;
+
+            const checkboxTodos = document.getElementById('selecionarTodosCheckbox');
+            if (!checkboxTodos) return;
+
+            const aptasVisiveis = empresasFiltradas.filter(empresaSelecionavelEmLote);
+            const selecionadasVisiveis = aptasVisiveis.filter(
+                empresa => empresasSelecionadas.has(String(empresa.codigo))
+            ).length;
+
+            checkboxTodos.checked = aptasVisiveis.length > 0 && selecionadasVisiveis === aptasVisiveis.length;
+            checkboxTodos.indeterminate = selecionadasVisiveis > 0 && selecionadasVisiveis < aptasVisiveis.length;
+            checkboxTodos.disabled = aptasVisiveis.length === 0;
+        }
+
+        function salvarUiComunicacaoNaSessao() {
+            try {
+                sessionStorage.setItem(CHAVE_COMUNICACAO_UI, JSON.stringify({
+                    busca: document.getElementById('searchInput').value,
+                    situacaoEmail: document.getElementById('emailFilter').value
+                }));
+            } catch (error) {
+                console.warn('Não foi possível preservar os filtros da Comunicação e-BEF:', error);
+            }
+        }
+
+        function salvarComunicacaoNaSessao(ano, payload) {
+            try {
+                sessionStorage.setItem(CHAVE_COMUNICACAO_DADOS, JSON.stringify({ ano_apresentacao: ano, payload }));
+                sessionStorage.setItem(CHAVE_ANO_ATIVO, String(ano));
+                sessionStorage.setItem(CHAVE_COMUNICACAO_PENDENTE, '0');
+            } catch (error) {
+                console.warn('Não foi possível preservar a Comunicação e-BEF:', error);
+            }
+        }
+
+        function aplicarPayloadComunicacao(payload) {
+            empresasData = payload.dados || [];
+            metaComunicacao = payload.meta || {};
+            sincronizarSelecaoComDados();
+
+            document.getElementById('cardTotal').textContent = Number(metaComunicacao.total_comunicacao || 0).toLocaleString('pt-BR');
+            document.getElementById('cardManual').textContent = Number(metaComunicacao.total_manuais || 0).toLocaleString('pt-BR');
+            document.getElementById('cardComEmail').textContent = Number(metaComunicacao.com_email_valido || 0).toLocaleString('pt-BR');
+            document.getElementById('cardSemEmail').textContent = Number(metaComunicacao.sem_email || 0).toLocaleString('pt-BR');
+            document.getElementById('cardEmailInvalido').textContent = Number(metaComunicacao.email_invalido || 0).toLocaleString('pt-BR');
+            document.getElementById('anoBadge').textContent = `e-BEF ${metaComunicacao.ano_apresentacao || document.getElementById('anoApresentacao').value}`;
+            document.getElementById('ultimaAtualizacao').textContent = `Última consulta: ${formatarDataHora(metaComunicacao.gerado_em)}`;
+
+            aplicarFiltros();
+        }
+
+
+        function obterConsultaCacheDoAno(ano) {
+            try {
+                const estado = JSON.parse(sessionStorage.getItem(CHAVE_CONSULTA_DADOS) || 'null');
+                if (!estado || Number(estado.ano_apresentacao) !== Number(ano) || !Array.isArray(estado.empresasData)) {
+                    return null;
+                }
+                return estado.empresasData;
+            } catch (error) {
+                console.warn('Não foi possível ler o cache da Consulta e-BEF:', error);
+                return null;
+            }
+        }
+
+        function recalcularMetaComunicacaoLocal() {
+            metaComunicacao.total_comunicacao = empresasData.length;
+            metaComunicacao.total_obrigadas = empresasData.filter(empresa => empresa.origem === 'AUTOMATICA').length;
+            metaComunicacao.total_manuais = empresasData.filter(empresa => empresa.origem === 'MANUAL').length;
+            metaComunicacao.com_email_valido = empresasData.filter(empresa => empresa.email_valido).length;
+            metaComunicacao.sem_email = empresasData.filter(empresa => !empresa.email_preenchido).length;
+            metaComunicacao.email_invalido = empresasData.filter(
+                empresa => empresa.email_preenchido && !empresa.email_valido
+            ).length;
+            metaComunicacao.ja_enviadas = empresasData.filter(empresa => empresa.ja_enviado).length;
+            metaComunicacao.nao_enviadas = Math.max(0, empresasData.length - metaComunicacao.ja_enviadas);
+        }
+
+        function sincronizarComunicacaoLocal() {
+            recalcularMetaComunicacaoLocal();
+            const ano = Number(document.getElementById('anoApresentacao').value);
+            const payload = { dados: empresasData, meta: metaComunicacao };
+            salvarComunicacaoNaSessao(ano, payload);
+            aplicarPayloadComunicacao(payload);
+        }
+
+        function restaurarComunicacaoDaSessao() {
+            try {
+                const anoAtivo = Number(sessionStorage.getItem(CHAVE_ANO_ATIVO));
+                if (!anoAtivo) return false;
+
+                const selectAno = document.getElementById('anoApresentacao');
+                if (Array.from(selectAno.options).some(option => Number(option.value) === anoAtivo)) {
+                    selectAno.value = String(anoAtivo);
+                }
+
+                const uiSalva = JSON.parse(sessionStorage.getItem(CHAVE_COMUNICACAO_UI) || 'null') || {};
+                document.getElementById('searchInput').value = uiSalva.busca || '';
+                document.getElementById('emailFilter').value = uiSalva.situacaoEmail || '';
+                restaurarSelecaoDaSessao();
+
+                const estadoSalvo = JSON.parse(sessionStorage.getItem(CHAVE_COMUNICACAO_DADOS) || 'null');
+                const dadosDoAnoAtivo = estadoSalvo
+                    && Number(estadoSalvo.ano_apresentacao) === anoAtivo
+                    && estadoSalvo.payload;
+
+                if (dadosDoAnoAtivo) aplicarPayloadComunicacao(estadoSalvo.payload);
+
+                const precisaAtualizar = sessionStorage.getItem(CHAVE_COMUNICACAO_PENDENTE) === '1';
+                if (precisaAtualizar || !dadosDoAnoAtivo) void fetchDados();
+                return true;
+            } catch (error) {
+                console.warn('Não foi possível restaurar a Comunicação e-BEF:', error);
+                return false;
+            }
+        }
+
+        function escapeHtml(valor) {
+            return String(valor ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+        }
+
+        function normalizarBusca(valor) {
+            return String(valor ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        function formatarDocumento(valor) {
+            const documento = String(valor ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (/^[A-Z0-9]{14}$/.test(documento)) {
+                return `${documento.slice(0, 2)}.${documento.slice(2, 5)}.${documento.slice(5, 8)}/${documento.slice(8, 12)}-${documento.slice(12)}`;
+            }
+            return valor || 'Não informado';
+        }
+
+        function formatarDataHora(valor) {
+            if (!valor) return 'Data não informada';
+            return new Intl.DateTimeFormat('pt-BR', {
+                dateStyle: 'short',
+                timeStyle: 'medium'
+            }).format(new Date(valor));
+        }
+
+        function getSituacaoEmail(empresa) {
+            if (!empresa.email_preenchido) return 'SEM_EMAIL';
+            return empresa.email_valido ? 'VALIDO' : 'INVALIDO';
+        }
+
+        function getEmailBadge(empresa) {
+            const badges = {
+                VALIDO: ['Formato válido', 'bg-emerald-100 text-emerald-800 border-emerald-200'],
+                SEM_EMAIL: ['Sem e-mail', 'bg-amber-100 text-amber-800 border-amber-200'],
+                INVALIDO: ['Formato inválido', 'bg-red-100 text-red-800 border-red-200']
+            };
+            const [texto, classes] = badges[getSituacaoEmail(empresa)];
+            return `<span class="inline-flex px-2 py-1 rounded-md border font-semibold text-xs ${classes}">${texto}</span>`;
+        }
+
+        function getOrigemBadge(empresa) {
+            if (empresa.origem === 'MANUAL') {
+                const detalhe = empresa.motivo_auditoria ? ` title="${escapeHtml(empresa.motivo_auditoria)}"` : '';
+                return `<span${detalhe} class="inline-flex px-2 py-1 rounded-md border font-semibold text-xs bg-blue-100 text-blue-800 border-blue-200">Manual</span>`;
+            }
+            return '<span class="inline-flex px-2 py-1 rounded-md border font-semibold text-xs bg-slate-100 text-slate-700 border-slate-200">Automática</span>';
+        }
+
+        async function fetchDados() {
+            const tbody = document.getElementById('tableBody');
+            const botao = document.getElementById('atualizarBtn');
+            const ano = Number(document.getElementById('anoApresentacao').value);
+
+            tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Atualizando dados...</td></tr>';
+            botao.disabled = true;
+            botao.textContent = 'Atualizando...';
+
+            try {
+                const response = await fetch(`/api/comunicacao-ebef?ano_apresentacao=${encodeURIComponent(ano)}`, {
+                    cache: 'no-store'
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'Erro na API');
+
+                salvarComunicacaoNaSessao(ano, payload);
+                aplicarPayloadComunicacao(payload);
+            } catch (error) {
+                empresasData = [];
+                empresasFiltradas = [];
+                tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-10 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`;
+                document.getElementById('resultadoInfo').textContent = 'A consulta não foi concluída.';
+                atualizarBarraSelecao();
+            } finally {
+                botao.disabled = false;
+                botao.textContent = 'Atualizar lista';
+            }
+        }
+
+        function aplicarFiltros() {
+            const termoOriginal = document.getElementById('searchInput').value.trim().toLowerCase();
+            const termoNormalizado = normalizarBusca(termoOriginal);
+            const situacaoEmail = document.getElementById('emailFilter').value;
+
+            empresasFiltradas = empresasData.filter(empresa => {
+                const textoCompleto = [
+                    empresa.codigo,
+                    empresa.razao_social,
+                    empresa.cnpj,
+                    formatarDocumento(empresa.cnpj),
+                    empresa.email
+                ].join(' ').toLowerCase();
+
+                const encontrouTexto = !termoOriginal
+                    || textoCompleto.includes(termoOriginal)
+                    || normalizarBusca(textoCompleto).includes(termoNormalizado);
+                const encontrouSituacao = !situacaoEmail || getSituacaoEmail(empresa) === situacaoEmail;
+                return encontrouTexto && encontrouSituacao;
+            });
+
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            if (empresasFiltradas.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Nenhuma empresa encontrada com os filtros informados.</td></tr>';
+                document.getElementById('resultadoInfo').textContent = '0 empresas exibidas.';
+                atualizarBarraSelecao();
+                return;
+            }
+
+            empresasFiltradas.forEach(empresa => {
+                const tr = document.createElement('tr');
+                const apta = empresaAptaParaEnvio(empresa);
+                const selecionavelLote = empresaSelecionavelEmLote(empresa);
+                const codigo = String(empresa.codigo);
+                const selecionada = empresasSelecionadas.has(codigo);
+                tr.className = 'hover:bg-slate-50';
+
+                const controleSelecao = selecionavelLote
+                    ? `<input type="checkbox" ${selecionada ? 'checked' : ''}
+                              onchange="alternarEmpresaSelecionada('${escapeHtml(codigo)}', this.checked)"
+                              class="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+                              title="Selecionar para envio">`
+                    : `<span class="text-slate-300"
+                             title="${empresa.ja_enviado ? 'Já enviado neste exercício' : 'Empresa sem e-mail apto para envio'}">—</span>`;
+
+                let botaoEnvio = `
+                    <button type="button" disabled
+                            class="px-2.5 py-1.5 rounded-md border border-slate-200 bg-slate-50 text-slate-400 text-xs font-semibold cursor-not-allowed">
+                        Enviar
+                    </button>`;
+
+                if (apta && empresa.ja_enviado) {
+                    botaoEnvio = `
+                        <button type="button" onclick="abrirModalIndividual('${escapeHtml(codigo)}', true)"
+                                class="px-2.5 py-1.5 rounded-md border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 text-xs font-semibold">
+                            Reenviar
+                        </button>`;
+                } else if (apta) {
+                    const textoBotao = empresa.ultima_tentativa_status === 'ERRO' ? 'Tentar novamente' : 'Enviar';
+                    botaoEnvio = `
+                        <button type="button" onclick="abrirModalIndividual('${escapeHtml(codigo)}', false)"
+                                class="px-2.5 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold">
+                            ${textoBotao}
+                        </button>`;
+                }
+
+                const botaoRemover = empresa.inclusao_manual
+                    ? `<button type="button" onclick="removerInclusaoManual('${escapeHtml(codigo)}')"
+                               class="px-2.5 py-1.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 text-xs font-semibold">Remover</button>`
+                    : '';
+
+                tr.innerHTML = `
+                    <td class="px-2 py-3 text-center">${controleSelecao}</td>
+                    <td class="px-2 py-3 font-semibold text-slate-950">${escapeHtml(empresa.codigo)}</td>
+                    <td class="px-2 py-3 text-slate-700 break-words leading-snug">${escapeHtml(empresa.razao_social)}</td>
+                    <td class="px-2 py-3 text-slate-600 leading-snug">${escapeHtml(formatarDocumento(empresa.cnpj))}</td>
+                    <td class="px-2 py-3 break-all ${empresa.email_preenchido ? 'text-slate-700' : 'text-slate-400 italic'}">
+                        ${escapeHtml(empresa.email || 'Não cadastrado na Domínio')}
+                    </td>
+                    <td class="px-2 py-3">${getEmailBadge(empresa)}</td>
+                    <td class="px-2 py-3">${getOrigemBadge(empresa)}</td>
+                    <td class="px-2 py-3">${getEnvioBadge(empresa)}</td>
+                    <td class="px-2 py-3 text-center"><div class="flex flex-wrap justify-center gap-1.5">${botaoEnvio}${botaoRemover}</div></td>`;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('resultadoInfo').textContent =
+                `${empresasFiltradas.length.toLocaleString('pt-BR')} de ${empresasData.length.toLocaleString('pt-BR')} empresas na comunicação exibidas.`;
+            atualizarBarraSelecao();
+        }
+
+
+        function abrirModalInclusao() {
+            const modal = document.getElementById('inclusaoModal');
+            const input = document.getElementById('buscaInclusaoInput');
+            candidatasInclusaoAtuais = new Map();
+            document.getElementById('resultadoInclusao').innerHTML = `
+                <div class="px-4 py-8 text-center text-sm text-slate-500">Pesquise a empresa que deseja incluir.</div>`;
+            input.value = '';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => input.focus(), 50);
+        }
+
+        function fecharModalInclusao(event) {
+            if (event && event.target !== event.currentTarget) return;
+            const modal = document.getElementById('inclusaoModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function enriquecerCandidataInclusao(empresa) {
+            const codigo = String(empresa.codigo);
+            const atual = empresasData.find(item => String(item.codigo) === codigo);
+
+            return {
+                ...empresa,
+                email: empresa.email || atual?.email || '',
+                email_preenchido: empresa.email_preenchido ?? atual?.email_preenchido ?? false,
+                email_valido: empresa.email_valido ?? atual?.email_valido ?? false,
+                ja_na_comunicacao: Boolean(atual) || Boolean(empresa.inclusao_manual_ativa),
+                origem_atual: atual?.origem || (empresa.inclusao_manual_ativa ? 'MANUAL' : null)
+            };
+        }
+
+        function buscarEmpresasInclusaoNoCache(termo, ano) {
+            const consulta = obterConsultaCacheDoAno(ano);
+            if (!consulta) return null;
+
+            const termoLower = termo.toLowerCase();
+            const termoNormalizado = normalizarBusca(termo);
+
+            return consulta
+                .filter(empresa => {
+                    const atual = empresasData.find(item => String(item.codigo) === String(empresa.codigo));
+                    const texto = [
+                        empresa.codigo,
+                        empresa.razao_social,
+                        empresa.cnpj,
+                        formatarDocumento(empresa.cnpj),
+                        atual?.email || ''
+                    ].join(' ').toLowerCase();
+
+                    return texto.includes(termoLower) || normalizarBusca(texto).includes(termoNormalizado);
+                })
+                .slice(0, 50)
+                .map(empresa => enriquecerCandidataInclusao({
+                    codigo: empresa.codigo,
+                    razao_social: empresa.razao_social,
+                    cnpj: empresa.cnpj,
+                    status_auditoria: empresa.status_codigo,
+                    motivo_auditoria: empresa.motivo_curto
+                }));
+        }
+
+        function renderizarCandidatasInclusao(empresas) {
+            const resultado = document.getElementById('resultadoInclusao');
+            candidatasInclusaoAtuais = new Map(
+                empresas.map(empresa => [String(empresa.codigo), empresa])
+            );
+
+            if (empresas.length === 0) {
+                resultado.innerHTML = '<div class="px-4 py-8 text-center text-sm text-slate-500">Nenhuma matriz ativa encontrada.</div>';
+                return;
+            }
+
+            resultado.innerHTML = empresas.map(empresa => {
+                const status = empresa.status_auditoria || 'SEM CLASSIFICAÇÃO';
+                const motivo = empresa.motivo_auditoria ? ` — ${escapeHtml(empresa.motivo_auditoria)}` : '';
+                const email = empresa.email || 'E-mail será validado ao incluir';
+                const jaNaLista = Boolean(empresa.ja_na_comunicacao);
+                const origem = empresa.origem_atual === 'AUTOMATICA' ? 'Automática' : 'Manual';
+
+                return `
+                    <div class="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="font-semibold text-slate-900">${escapeHtml(empresa.codigo)} — ${escapeHtml(empresa.razao_social)}</p>
+                            <p class="text-xs text-slate-500 mt-1">${escapeHtml(formatarDocumento(empresa.cnpj))} · ${escapeHtml(email)}</p>
+                            <p class="text-xs text-slate-500 mt-1">Auditoria: <b>${escapeHtml(status)}</b>${motivo}</p>
+                        </div>
+                        ${jaNaLista
+                            ? `<span class="shrink-0 px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 text-xs font-semibold">Já na lista (${origem})</span>`
+                            : `<button type="button" onclick="incluirEmpresaManual('${escapeHtml(String(empresa.codigo))}')"
+                                       class="shrink-0 px-3 py-1.5 rounded-md bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold">Incluir</button>`}
+                    </div>`;
+            }).join('');
+        }
+
+        async function buscarEmpresasInclusao() {
+            const termo = document.getElementById('buscaInclusaoInput').value.trim();
+            const resultado = document.getElementById('resultadoInclusao');
+            const botao = document.getElementById('buscarInclusaoBtn');
+
+            if (!termo) {
+                resultado.innerHTML = '<div class="px-4 py-8 text-center text-sm text-amber-700">Informe um código, nome, CNPJ ou e-mail.</div>';
+                return;
+            }
+
+            const ano = Number(document.getElementById('anoApresentacao').value);
+            const locais = buscarEmpresasInclusaoNoCache(termo, ano);
+
+            if (locais && locais.length > 0) {
+                renderizarCandidatasInclusao(locais);
+                return;
+            }
+
+            botao.disabled = true;
+            botao.textContent = 'Buscando...';
+            resultado.innerHTML = locais
+                ? '<div class="px-4 py-8 text-center text-sm text-slate-500">Não encontrado no cache. Consultando cadastro da Domínio...</div>'
+                : '<div class="px-4 py-8 text-center text-sm text-slate-500">Consulta e-BEF não está em cache. Buscando na Domínio...</div>';
+
+            try {
+                const response = await fetch(`/api/comunicacao-ebef/candidatas?ano_apresentacao=${encodeURIComponent(ano)}&q=${encodeURIComponent(termo)}`, { cache: 'no-store' });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'Não foi possível buscar as empresas.');
+
+                const empresas = (payload.dados || []).map(enriquecerCandidataInclusao);
+                renderizarCandidatasInclusao(empresas);
+            } catch (error) {
+                resultado.innerHTML = `<div class="px-4 py-8 text-center text-sm text-red-700">${escapeHtml(error.message)}</div>`;
+            } finally {
+                botao.disabled = false;
+                botao.textContent = 'Buscar';
+            }
+        }
+
+        async function incluirEmpresaManual(codigo) {
+            const candidata = candidatasInclusaoAtuais.get(String(codigo));
+
+            try {
+                const ano = Number(document.getElementById('anoApresentacao').value);
+                const response = await fetch('/api/comunicacao-ebef/inclusao-manual', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ano_apresentacao: ano, codigo_empresa: codigo })
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'Não foi possível incluir a empresa.');
+
+                const empresaIncluida = {
+                    ...payload.empresa,
+                    status_auditoria: candidata?.status_auditoria || null,
+                    motivo_auditoria: candidata?.motivo_auditoria || null
+                };
+
+                const indice = empresasData.findIndex(item => String(item.codigo) === String(codigo));
+                if (indice >= 0) {
+                    empresasData[indice] = empresaIncluida;
+                } else {
+                    empresasData.push(empresaIncluida);
+                }
+
+                empresasData.sort((a, b) => String(a.razao_social || '').localeCompare(String(b.razao_social || ''), 'pt-BR'));
+                fecharModalInclusao();
+                sincronizarComunicacaoLocal();
+            } catch (error) {
+                alert(`Não foi possível incluir a empresa:\n${error.message}`);
+            }
+        }
+
+        async function removerInclusaoManual(codigo) {
+            const empresa = empresasData.find(item => String(item.codigo) === String(codigo));
+            if (!empresa || !empresa.inclusao_manual) return;
+
+            if (!confirm(`Remover ${empresa.razao_social} da Comunicação e-BEF deste ano?\n\nO histórico de envios será preservado.`)) return;
+
+            try {
+                const ano = Number(document.getElementById('anoApresentacao').value);
+                const response = await fetch('/api/comunicacao-ebef/inclusao-manual', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ano_apresentacao: ano, codigo_empresa: codigo })
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'Não foi possível remover a inclusão manual.');
+
+                empresasSelecionadas.delete(String(codigo));
+                empresasData = empresasData.filter(item => String(item.codigo) !== String(codigo));
+                salvarSelecaoNaSessao();
+                sincronizarComunicacaoLocal();
+            } catch (error) {
+                alert(`Não foi possível remover a empresa:\n${error.message}`);
+            }
+        }
+
+        async function carregarPreviewEmail(empresa) {
+            const response = await fetch('/api/comunicacao-ebef/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    razao_social: empresa.razao_social,
+                    cnpj: empresa.cnpj
+                })
+            });
+
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload.error || 'Não foi possível montar a prévia do e-mail.');
+            }
+
+            return payload;
+        }
+
+        function abrirModalIndividual(codigo, forcarReenvio = false) {
+            const empresa = empresasData.find(item => String(item.codigo) === String(codigo));
+            if (!empresa || !empresaAptaParaEnvio(empresa)) {
+                alert('Esta empresa não possui um e-mail válido para envio.');
+                return;
+            }
+
+            empresasEnvioAtual = [empresa];
+            forcarReenvioAtual = Boolean(forcarReenvio);
+            abrirModalEnvio(empresasEnvioAtual, false);
+        }
+
+        function abrirModalLote() {
+            const empresas = empresasData.filter(empresa =>
+                empresasSelecionadas.has(String(empresa.codigo)) && empresaSelecionavelEmLote(empresa)
+            );
+
+            if (empresas.length === 0) {
+                alert('Selecione pelo menos uma empresa ainda não enviada e com e-mail válido.');
+                return;
+            }
+
+            empresasEnvioAtual = empresas;
+            forcarReenvioAtual = false;
+            abrirModalEnvio(empresas, true);
+        }
+
+        async function abrirModalEnvio(empresas, lote) {
+            const modal = document.getElementById('envioModal');
+            const resumo = document.getElementById('envioModalResumo');
+            const destinatarios = document.getElementById('envioModalDestinatarios');
+            const avisoPersonalizacao = document.getElementById('envioModalAvisoPersonalizacao');
+            const confirmarBtn = document.getElementById('confirmarEnvioBtn');
+
+            if (forcarReenvioAtual) {
+                resumo.textContent = 'Esta empresa já possui envio registrado. Confirme somente se deseja reenviar a comunicação.';
+            } else {
+                resumo.textContent = empresas.length === 1
+                    ? 'Será enviado 1 e-mail individual.'
+                    : `Serão enviados ${empresas.length.toLocaleString('pt-BR')} e-mails individuais.`;
+            }
+
+            destinatarios.innerHTML = empresas.map(empresa => `
+                <div class="px-4 py-3">
+                    <p class="font-semibold text-sm text-slate-900">${escapeHtml(empresa.codigo)} — ${escapeHtml(empresa.razao_social)}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(formatarDocumento(empresa.cnpj))}</p>
+                    <p class="text-sm text-blue-700 mt-1">${escapeHtml(empresa.email)}</p>
+                </div>`).join('');
+
+            avisoPersonalizacao.classList.toggle('hidden', !lote);
+            document.getElementById('envioModalAssunto').textContent = 'Carregando prévia...';
+            document.getElementById('envioModalMensagem').innerHTML = '<div class="p-8 text-center text-slate-500">Carregando prévia do e-mail...</div>';
+            document.getElementById('envioModalAnexo').textContent = 'Carregando...';
+
+            confirmarBtn.disabled = true;
+            confirmarBtn.textContent = 'Carregando prévia...';
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            try {
+                const preview = await carregarPreviewEmail(empresas[0]);
+
+                document.getElementById('envioModalAssunto').textContent = preview.assunto;
+                document.getElementById('envioModalMensagem').innerHTML = preview.corpo_html;
+                document.getElementById('envioModalAnexo').textContent = preview.anexo;
+
+                confirmarBtn.disabled = false;
+                confirmarBtn.textContent = forcarReenvioAtual
+                    ? 'Confirmar reenvio'
+                    : empresas.length === 1
+                        ? 'Confirmar envio'
+                        : `Confirmar ${empresas.length.toLocaleString('pt-BR')} envios`;
+            } catch (error) {
+                document.getElementById('envioModalAssunto').textContent = 'Erro ao carregar prévia';
+                document.getElementById('envioModalMensagem').innerHTML = `
+                    <div class="p-6 text-red-700 bg-red-50 border border-red-200 rounded-lg">
+                        ${escapeHtml(error.message)}
+                    </div>`;
+                document.getElementById('envioModalAnexo').textContent = 'Não foi possível carregar.';
+                confirmarBtn.disabled = true;
+                confirmarBtn.textContent = 'Prévia indisponível';
+            }
+        }
+
+        function fecharModalEnvio(event) {
+            if (event && event.target !== event.currentTarget) return;
+            const modal = document.getElementById('envioModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function abrirResultadoEnvio({ titulo, mensagem, detalhes = [], tipo = 'sucesso' }) {
+            const modal = document.getElementById('resultadoEnvioModal');
+            const icone = document.getElementById('resultadoEnvioIcone');
+            const tituloEl = document.getElementById('resultadoEnvioTitulo');
+            const mensagemEl = document.getElementById('resultadoEnvioMensagem');
+            const detalhesEl = document.getElementById('resultadoEnvioDetalhes');
+
+            const estilos = {
+                sucesso: ['bg-emerald-100 text-emerald-700', '<path stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4 4L19 7"/>'],
+                aviso: ['bg-amber-100 text-amber-700', '<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.3 4.5 3.7 16a2 2 0 0 0 1.73 3h13.14a2 2 0 0 0 1.73-3L13.7 4.5a2 2 0 0 0-3.4 0Z"/>'],
+                erro: ['bg-red-100 text-red-700', '<path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18"/>']
+            };
+
+            const [classes, desenho] = estilos[tipo] || estilos.sucesso;
+            icone.className = `mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full ${classes}`;
+            icone.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" class="h-7 w-7">${desenho}</svg>`;
+            tituloEl.textContent = titulo;
+            mensagemEl.textContent = mensagem;
+
+            if (detalhes.length > 0) {
+                detalhesEl.innerHTML = detalhes.map(item => `<p>${escapeHtml(item)}</p>`).join('');
+                detalhesEl.classList.remove('hidden');
+            } else {
+                detalhesEl.innerHTML = '';
+                detalhesEl.classList.add('hidden');
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function fecharResultadoEnvio(event) {
+            if (event && event.target !== event.currentTarget) return;
+            const modal = document.getElementById('resultadoEnvioModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function mostrarResultadoEnvio(meta) {
+            const enviados = Number(meta.enviadas || 0);
+            const testes = Number(meta.testes || 0);
+            const erros = Number(meta.erros || 0);
+            const ignoradas = Number(meta.ignoradas || 0);
+            const detalhes = [];
+
+            if (testes > 0 && meta.destino_teste) {
+                detalhes.push(`Destino de teste: ${meta.destino_teste}`);
+            }
+            if (erros > 0) detalhes.push(`${erros.toLocaleString('pt-BR')} envio(s) com erro.`);
+            if (ignoradas > 0) detalhes.push(`${ignoradas.toLocaleString('pt-BR')} empresa(s) ignorada(s).`);
+
+            if (testes > 0) {
+                abrirResultadoEnvio({
+                    titulo: 'Envio de teste concluído',
+                    mensagem: testes === 1
+                        ? '1 e-mail de teste foi enviado com sucesso.'
+                        : `${testes.toLocaleString('pt-BR')} e-mails de teste foram enviados com sucesso.`,
+                    detalhes,
+                    tipo: erros > 0 ? 'aviso' : 'sucesso'
+                });
+                return;
+            }
+
+            abrirResultadoEnvio({
+                titulo: erros > 0 && enviados === 0 ? 'Falha no envio' : 'Envio concluído',
+                mensagem: enviados === 1
+                    ? '1 e-mail foi enviado com sucesso.'
+                    : `${enviados.toLocaleString('pt-BR')} e-mails foram enviados com sucesso.`,
+                detalhes,
+                tipo: erros > 0 ? (enviados > 0 ? 'aviso' : 'erro') : 'sucesso'
+            });
+        }
+
+        async function confirmarEnvioReal() {
+            if (empresasEnvioAtual.length === 0) return;
+
+            const confirmarBtn = document.getElementById('confirmarEnvioBtn');
+            const textoOriginal = confirmarBtn.textContent;
+            confirmarBtn.disabled = true;
+            confirmarBtn.textContent = 'Enviando...';
+
+            try {
+                const ano = Number(document.getElementById('anoApresentacao').value);
+                const response = await fetch('/api/comunicacao-ebef/enviar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ano_apresentacao: ano,
+                        codigos_empresa: empresasEnvioAtual.map(empresa => empresa.codigo),
+                        forcar_reenvio: forcarReenvioAtual
+                    })
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || 'Erro ao enviar a comunicação e-BEF.');
+
+                const meta = payload.meta || {};
+
+                empresasSelecionadas.clear();
+                salvarSelecaoNaSessao();
+                empresasEnvioAtual = [];
+                forcarReenvioAtual = false;
+                fecharModalEnvio();
+                mostrarResultadoEnvio(meta);
+                void fetchDados();
+            } catch (error) {
+                abrirResultadoEnvio({
+                    titulo: 'Não foi possível concluir o envio',
+                    mensagem: error.message,
+                    tipo: 'erro'
+                });
+            } finally {
+                confirmarBtn.disabled = false;
+                confirmarBtn.textContent = textoOriginal;
+            }
+        }
+
+        document.getElementById('searchInput').addEventListener('input', () => {
+            aplicarFiltros();
+            salvarUiComunicacaoNaSessao();
+        });
+
+        document.getElementById('emailFilter').addEventListener('change', () => {
+            aplicarFiltros();
+            salvarUiComunicacaoNaSessao();
+        });
+
+        document.getElementById('anoApresentacao').addEventListener('change', () => {
+            empresasData = [];
+            empresasFiltradas = [];
+            metaComunicacao = {};
+            empresasSelecionadas.clear();
+            empresasEnvioAtual = [];
+            forcarReenvioAtual = false;
+            sessionStorage.removeItem(CHAVE_COMUNICACAO_SELECAO);
+
+            document.getElementById('cardTotal').textContent = '0';
+            document.getElementById('cardManual').textContent = '0';
+            document.getElementById('cardComEmail').textContent = '0';
+            document.getElementById('cardSemEmail').textContent = '0';
+            document.getElementById('cardEmailInvalido').textContent = '0';
+            document.getElementById('anoBadge').textContent = 'Ano alterado';
+            document.getElementById('ultimaAtualizacao').textContent = 'Clique em Atualizar lista.';
+            document.getElementById('tableBody').innerHTML =
+                '<tr><td colspan="9" class="px-6 py-10 text-center text-slate-500">Clique em Atualizar lista para consultar as empresas da comunicação.</td></tr>';
+            document.getElementById('resultadoInfo').textContent = 'Aguardando consulta...';
+            atualizarBarraSelecao();
+        });
+
+        document.getElementById('buscaInclusaoInput').addEventListener('keydown', event => {
+            if (event.key === 'Enter') buscarEmpresasInclusao();
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            if (!document.getElementById('resultadoEnvioModal').classList.contains('hidden')) fecharResultadoEnvio();
+            if (!document.getElementById('inclusaoModal').classList.contains('hidden')) fecharModalInclusao();
+            if (!document.getElementById('envioModal').classList.contains('hidden')) fecharModalEnvio();
+        });
+
+        window.addEventListener('load', () => {
+            restaurarComunicacaoDaSessao();
+            atualizarBarraSelecao();
+        });
+    </script>
+</body>
+</html>

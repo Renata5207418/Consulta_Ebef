@@ -690,6 +690,85 @@ class DatabaseConnection:
             cursor.close()
 
 
+    def get_contatos_comunicacao_ebef(self) -> list:
+        """Lista os contatos das matrizes ativas usados na comunicação do e-BEF."""
+        if not self.conn:
+            logging.error(
+                "Conexão não estabelecida antes de listar contatos para comunicação e-BEF."
+            )
+            return []
+
+        query = """
+        SELECT
+            emp.codi_emp AS codigo,
+            emp.nome_emp AS razao_social,
+            emp.cgce_emp AS cnpj,
+            emp.email_emp AS email
+        FROM "bethadba"."geempre" emp
+        WHERE emp.stat_emp = 'A'
+          AND emp.cgce_emp IS NOT NULL
+          AND TRIM(emp.cgce_emp) NOT IN ('00000000000000', '')
+          AND LENGTH(
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(TRIM(emp.cgce_emp), '.', ''),
+                            '/', ''
+                        ),
+                        '-', ''
+                    ),
+                    ' ', ''
+                )
+              ) = 14
+          AND SUBSTRING(
+                REPLACE(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(TRIM(emp.cgce_emp), '.', ''),
+                            '/', ''
+                        ),
+                        '-', ''
+                    ),
+                    ' ', ''
+                ),
+                9,
+                4
+              ) = '0001'
+          AND emp.nome_emp NOT LIKE '%LIBERADO%'
+          AND emp.nome_emp <> '.'
+          AND emp.codi_emp <= ?
+        ORDER BY emp.codi_emp
+        """
+
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute(query, self.codigo_maximo)
+            columns = [column[0] for column in cursor.description]
+            contatos = []
+
+            for row in cursor.fetchall():
+                contato = dict(zip(columns, row))
+                email = str(contato.get("email") or "").strip()
+
+                contato["email"] = email
+                contato["email_preenchido"] = bool(email)
+                contato["email_valido"] = bool(
+                    re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
+                )
+
+                contatos.append(contato)
+
+            return contatos
+        except Exception as exc:
+            logging.exception(
+                "Erro ao listar contatos para comunicação e-BEF: %s",
+                exc,
+            )
+            return []
+        finally:
+            cursor.close()
+
+
     def get_matrizes_ativas_para_receitaws(self) -> list:
             """Lista somente as matrizes ativas que poderão entrar na fila da ReceitaWS."""
             if not self.conn:

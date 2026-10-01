@@ -22,6 +22,17 @@
 </head>
 <body class="bg-slate-100 min-h-screen font-sans text-slate-800">
     <main class="max-w-[1500px] mx-auto p-4 md:p-8">
+                <nav class="mb-5 flex gap-2 border-b border-slate-200">
+            <a href="/"
+               class="px-4 py-2.5 text-sm font-semibold border-b-2 border-blue-700 text-blue-700">
+                Consulta e-BEF
+            </a>
+
+            <a href="/comunicacao"
+               class="px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800">
+                Comunicação e-BEF
+            </a>
+        </nav>
         <header class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 mb-5">
             <div>
                 <div class="flex flex-wrap items-center gap-3">
@@ -211,8 +222,7 @@
     <div id="qsaModal" class="hidden fixed inset-0 z-50 bg-slate-950/50 p-4 items-center justify-center" onclick="fecharModalQsa(event)">
         <div class="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-xl bg-white shadow-2xl" onclick="event.stopPropagation()">
             <div class="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
-                <div>
-                    Diverg.<h3 class="font-bold text-slate-950">Comparação do quadro societário</h3>
+                <div> Diverg.<h3 class="font-bold text-slate-950">Comparação do quadro societário</h3>
                     <p id="qsaModalEmpresa" class="text-sm text-slate-500"></p>
                 </div>
                 <button type="button" onclick="fecharModalQsa()" class="rounded-lg px-3 py-1.5 text-xl text-slate-500 hover:bg-slate-100">×</button>
@@ -227,6 +237,179 @@
         let currentPage = 1;
         let rowsPerPage = 50;
         let metaRelatorio = {};
+
+        const CHAVE_CONSULTA_DADOS = 'ebef_consulta_dados_v1';
+        const CHAVE_CONSULTA_UI = 'ebef_consulta_ui_v1';
+        const CHAVE_ANO_ATIVO = 'ebef_ano_ativo';
+        const CHAVE_COMUNICACAO_DADOS = 'ebef_comunicacao_dados_v1';
+        const CHAVE_COMUNICACAO_PENDENTE = 'ebef_comunicacao_pendente';
+
+        function salvarConsultaNaSessao() {
+            try {
+                sessionStorage.setItem(
+                    CHAVE_CONSULTA_DADOS,
+                    JSON.stringify({
+                        ano_apresentacao: metaRelatorio.ano_apresentacao || getAnoSelecionado(),
+                        empresasData,
+                        metaRelatorio
+                    })
+                );
+            } catch (error) {
+                console.warn(
+                    'Não foi possível preservar a consulta e-BEF na sessão:',
+                    error
+                );
+            }
+        }
+
+        function salvarUiConsultaNaSessao() {
+            try {
+                sessionStorage.setItem(
+                    CHAVE_CONSULTA_UI,
+                    JSON.stringify({
+                        busca: document.getElementById('searchInput').value,
+                        status: document.getElementById('statusFilter').value,
+                        sociosPj: document.getElementById('sociosPjFilter').value,
+                        rowsPerPage,
+                        currentPage
+                    })
+                );
+            } catch (error) {
+                console.warn(
+                    'Não foi possível preservar os filtros da consulta:',
+                    error
+                );
+            }
+        }
+
+        function restaurarConsultaDaSessao() {
+            try {
+                const dadosSalvos = JSON.parse(
+                    sessionStorage.getItem(CHAVE_CONSULTA_DADOS) || 'null'
+                );
+
+                if (
+                    !dadosSalvos
+                    || !Array.isArray(dadosSalvos.empresasData)
+                ) {
+                    return false;
+                }
+
+                const uiSalva = JSON.parse(
+                    sessionStorage.getItem(CHAVE_CONSULTA_UI) || 'null'
+                ) || {};
+
+                const anoSalvo = Number(
+                    dadosSalvos.ano_apresentacao
+                );
+
+                const selectAno = document.getElementById(
+                    'anoApresentacao'
+                );
+
+                if (
+                    anoSalvo
+                    && Array.from(selectAno.options).some(
+                        option => Number(option.value) === anoSalvo
+                    )
+                ) {
+                    selectAno.value = String(anoSalvo);
+                }
+
+                empresasData = dadosSalvos.empresasData;
+                metaRelatorio = dadosSalvos.metaRelatorio || {};
+
+                rowsPerPage = Number(
+                    uiSalva.rowsPerPage || 50
+                );
+
+                currentPage = Number(
+                    uiSalva.currentPage || 1
+                );
+
+                document.getElementById(
+                    'searchInput'
+                ).value = uiSalva.busca || '';
+
+                document.getElementById(
+                    'statusFilter'
+                ).value = uiSalva.status || '';
+
+                document.getElementById(
+                    'sociosPjFilter'
+                ).value = uiSalva.sociosPj || '';
+
+                document.getElementById(
+                    'rowsPerPageSelect'
+                ).value = String(rowsPerPage);
+
+                atualizarCabecalho();
+                atualizarCartoes();
+                aplicarFiltros();
+
+                document.getElementById(
+                    'exportarCsvBtn'
+                ).disabled = empresasData.length === 0;
+
+                return true;
+
+            } catch (error) {
+                console.warn(
+                    'Não foi possível restaurar a consulta e-BEF:',
+                    error
+                );
+
+                return false;
+            }
+        }
+
+        async function prepararComunicacaoEmSegundoPlano(
+            anoApresentacao
+        ) {
+            try {
+                const response = await fetch(
+                    `/api/comunicacao-ebef?ano_apresentacao=${encodeURIComponent(anoApresentacao)}`,
+                    {
+                        cache: 'no-store'
+                    }
+                );
+
+                const payload = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        payload.error
+                        || 'Erro ao preparar Comunicação e-BEF.'
+                    );
+                }
+
+                if (
+                    sessionStorage.getItem(CHAVE_ANO_ATIVO)
+                    !== String(anoApresentacao)
+                ) {
+                    return;
+                }
+
+                sessionStorage.setItem(
+                    CHAVE_COMUNICACAO_DADOS,
+                    JSON.stringify({
+                        ano_apresentacao: anoApresentacao,
+                        payload
+                    })
+                );
+
+                sessionStorage.setItem(
+                    CHAVE_COMUNICACAO_PENDENTE,
+                    '0'
+                );
+
+            } catch (error) {
+                console.warn(
+                    'A Comunicação e-BEF será atualizada ao abrir a aba:',
+                    error
+                );
+            }
+        }
 
         const formatadorBRL = new Intl.NumberFormat('pt-BR', {
             style: 'currency',
@@ -746,14 +929,40 @@
                 const payload = await response.json();
                 if (!response.ok) throw new Error(payload.error || 'Erro na API');
 
-                empresasData = Array.isArray(payload) ? payload : (payload.dados || []);
-                metaRelatorio = Array.isArray(payload) ? {} : (payload.meta || {});
+                                empresasData = Array.isArray(payload)
+                    ? payload
+                    : (payload.dados || []);
+
+                metaRelatorio = Array.isArray(payload)
+                    ? {}
+                    : (payload.meta || {});
+
                 currentPage = 1;
+
+                sessionStorage.setItem(
+                    CHAVE_ANO_ATIVO,
+                    String(anoApresentacao)
+                );
+
+                sessionStorage.setItem(
+                    CHAVE_COMUNICACAO_PENDENTE,
+                    '1'
+                );
+
+                salvarConsultaNaSessao();
+                salvarUiConsultaNaSessao();
 
                 atualizarCabecalho();
                 atualizarCartoes();
                 aplicarFiltros();
-                document.getElementById('exportarCsvBtn').disabled = empresasData.length === 0;
+
+                document.getElementById(
+                    'exportarCsvBtn'
+                ).disabled = empresasData.length === 0;
+
+                void prepararComunicacaoEmSegundoPlano(
+                    anoApresentacao
+                );
             } catch (error) {
                 tbody.innerHTML = `<tr><td colspan="9" class="px-6 py-10 text-center text-red-600">${escapeHtml(error.message)}</td></tr>`;
                 document.getElementById('ultimaAtualizacao').textContent = 'A consulta não foi concluída.';
@@ -964,10 +1173,27 @@
         }
 
         function changePage(direcao) {
-            const totalPaginas = Math.max(1, Math.ceil(currentFilteredData.length / rowsPerPage));
-            currentPage = Math.min(totalPaginas, Math.max(1, currentPage + direcao));
+            const totalPaginas = Math.max(
+                1,
+                Math.ceil(
+                    currentFilteredData.length / rowsPerPage
+                )
+            );
+
+            currentPage = Math.min(
+                totalPaginas,
+                Math.max(
+                    1,
+                    currentPage + direcao
+                )
+            );
+
             renderTable();
-            document.querySelector('.table-scroll').scrollTop = 0;
+            salvarUiConsultaNaSessao();
+
+            document.querySelector(
+                '.table-scroll'
+            ).scrollTop = 0;
         }
 
         function protegerCelulaCsv(valor) {
@@ -1019,28 +1245,72 @@
             URL.revokeObjectURL(url);
         }
 
-        document.getElementById('searchInput').addEventListener('input', () => {
-            currentPage = 1;
-            aplicarFiltros();
-        });
-        document.getElementById('statusFilter').addEventListener('change', () => {
-            currentPage = 1;
-            aplicarFiltros();
-        });
-        document.getElementById('sociosPjFilter').addEventListener('change', () => {
-            currentPage = 1;
-            aplicarFiltros();
-        });
-        document.getElementById('rowsPerPageSelect').addEventListener('change', event => {
-            rowsPerPage = Number(event.target.value);
-            currentPage = 1;
-            renderTable();
-        });
-        document.getElementById('anoApresentacao').addEventListener('change', () => {
-            limparResultadosParaNovoAno();
-        });
+                document.getElementById(
+            'searchInput'
+        ).addEventListener(
+            'input',
+            () => {
+                currentPage = 1;
+                aplicarFiltros();
+                salvarUiConsultaNaSessao();
+            }
+        );
 
-        window.addEventListener('load', limparResultadosParaNovoAno);
+        document.getElementById(
+            'statusFilter'
+        ).addEventListener(
+            'change',
+            () => {
+                currentPage = 1;
+                aplicarFiltros();
+                salvarUiConsultaNaSessao();
+            }
+        );
+
+        document.getElementById(
+            'sociosPjFilter'
+        ).addEventListener(
+            'change',
+            () => {
+                currentPage = 1;
+                aplicarFiltros();
+                salvarUiConsultaNaSessao();
+            }
+        );
+
+        document.getElementById(
+            'rowsPerPageSelect'
+        ).addEventListener(
+            'change',
+            event => {
+                rowsPerPage = Number(
+                    event.target.value
+                );
+
+                currentPage = 1;
+
+                renderTable();
+                salvarUiConsultaNaSessao();
+            }
+        );
+
+        document.getElementById(
+            'anoApresentacao'
+        ).addEventListener(
+            'change',
+            () => {
+                limparResultadosParaNovoAno();
+            }
+        );
+
+        window.addEventListener(
+            'load',
+            () => {
+                if (!restaurarConsultaDaSessao()) {
+                    limparResultadosParaNovoAno();
+                }
+            }
+        );
     </script>
 </body>
 </html>

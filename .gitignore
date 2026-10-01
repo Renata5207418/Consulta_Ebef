@@ -17,3 +17,9 @@ __pycache__/
 # Arquivos de sistema operacional (Mac/Windows)
 .DS_Store
 Thumbs.db
+
+# Comunicado exclusivo do escritório
+/resources
+
+# Bancos e caches locais com dados de clientes
+/data/
