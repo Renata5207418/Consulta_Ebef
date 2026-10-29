@@ -98,7 +98,7 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                     <p id="selecionadosInfo" class="text-sm font-semibold text-slate-800">0 empresas selecionadas</p>
-                    <p class="text-xs text-slate-500 mt-0.5">Somente empresas com e-mail válido e ainda não enviadas entram no lote.</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Selecione empresas para o primeiro envio ou para reenvio.</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <button type="button" onclick="abrirModalInclusao()"
@@ -108,6 +108,10 @@
                     <button id="enviarSelecionadosBtn" type="button" onclick="abrirModalLote()" disabled
                             class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-sm font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                         Enviar selecionados
+                    </button>
+                    <button id="reenviarSelecionadosBtn" type="button" onclick="abrirModalLote(true)" disabled
+                            class="px-4 py-2 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
+                        Reenviar selecionados
                     </button>
                 </div>
             </div>
@@ -291,7 +295,7 @@
         }
 
         function empresaSelecionavelEmLote(empresa) {
-            return empresaAptaParaEnvio(empresa) && !empresa.ja_enviado;
+            return empresaAptaParaEnvio(empresa);
         }
 
         function getEnvioBadge(empresa) {
@@ -377,10 +381,17 @@
         }
 
         function atualizarBarraSelecao() {
-            const total = empresasSelecionadas.size;
-            document.getElementById('selecionadosInfo').textContent =
-                total === 1 ? '1 empresa selecionada' : `${total.toLocaleString('pt-BR')} empresas selecionadas`;
-            document.getElementById('enviarSelecionadosBtn').disabled = total === 0;
+            const empresasMarcadas = empresasData.filter(empresa =>
+                empresasSelecionadas.has(String(empresa.codigo)) && empresaSelecionavelEmLote(empresa)
+            );
+            const total = empresasMarcadas.length;
+            const paraEnviar = empresasMarcadas.filter(empresa => !empresa.ja_enviado).length;
+            const paraReenviar = empresasMarcadas.filter(empresa => empresa.ja_enviado).length;
+            document.getElementById('selecionadosInfo').textContent = total === 0
+                ? '0 empresas selecionadas'
+                : `${total.toLocaleString('pt-BR')} empresa${total === 1 ? '' : 's'} selecionada${total === 1 ? '' : 's'} (${paraEnviar} para envio, ${paraReenviar} para reenvio)`;
+            document.getElementById('enviarSelecionadosBtn').disabled = paraEnviar === 0;
+            document.getElementById('reenviarSelecionadosBtn').disabled = paraReenviar === 0;
 
             const checkboxTodos = document.getElementById('selecionarTodosCheckbox');
             if (!checkboxTodos) return;
@@ -627,9 +638,8 @@
                     ? `<input type="checkbox" ${selecionada ? 'checked' : ''}
                               onchange="alternarEmpresaSelecionada('${escapeHtml(codigo)}', this.checked)"
                               class="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
-                              title="Selecionar para envio">`
-                    : `<span class="text-slate-300"
-                             title="${empresa.ja_enviado ? 'Já enviado neste exercício' : 'Empresa sem e-mail apto para envio'}">—</span>`;
+                              title="${empresa.ja_enviado ? 'Selecionar para reenvio' : 'Selecionar para envio'}">`
+                    : `<span class="text-slate-300" title="Empresa sem e-mail apto para envio">?</span>`;
 
                 let botaoEnvio = `
                     <button type="button" disabled
@@ -754,7 +764,7 @@
 
             resultado.innerHTML = empresas.map(empresa => {
                 const status = empresa.status_auditoria || 'SEM CLASSIFICAÇÃO';
-                const motivo = empresa.motivo_auditoria ? ` — ${escapeHtml(empresa.motivo_auditoria)}` : '';
+                const motivo = empresa.motivo_auditoria ? ` ? ${escapeHtml(empresa.motivo_auditoria)}` : '';
                 const email = empresa.email || 'E-mail será validado ao incluir';
                 const jaNaLista = Boolean(empresa.ja_na_comunicacao);
                 const origem = empresa.origem_atual === 'AUTOMATICA' ? 'Automática' : 'Manual';
@@ -762,7 +772,7 @@
                 return `
                     <div class="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div class="min-w-0">
-                            <p class="font-semibold text-slate-900">${escapeHtml(empresa.codigo)} — ${escapeHtml(empresa.razao_social)}</p>
+                            <p class="font-semibold text-slate-900">${escapeHtml(empresa.codigo)} ? ${escapeHtml(empresa.razao_social)}</p>
                             <p class="text-xs text-slate-500 mt-1">${escapeHtml(formatarDocumento(empresa.cnpj))} · ${escapeHtml(email)}</p>
                             <p class="text-xs text-slate-500 mt-1">Auditoria: <b>${escapeHtml(status)}</b>${motivo}</p>
                         </div>
@@ -902,18 +912,22 @@
             abrirModalEnvio(empresasEnvioAtual, false);
         }
 
-        function abrirModalLote() {
+        function abrirModalLote(forcarReenvio = false) {
             const empresas = empresasData.filter(empresa =>
-                empresasSelecionadas.has(String(empresa.codigo)) && empresaSelecionavelEmLote(empresa)
+                empresasSelecionadas.has(String(empresa.codigo)) &&
+                empresaSelecionavelEmLote(empresa) &&
+                Boolean(empresa.ja_enviado) === Boolean(forcarReenvio)
             );
 
             if (empresas.length === 0) {
-                alert('Selecione pelo menos uma empresa ainda não enviada e com e-mail válido.');
+                alert(forcarReenvio
+                    ? 'Selecione pelo menos uma empresa já enviada e com e-mail válido para reenviar.'
+                    : 'Selecione pelo menos uma empresa ainda não enviada e com e-mail válido.');
                 return;
             }
 
             empresasEnvioAtual = empresas;
-            forcarReenvioAtual = false;
+            forcarReenvioAtual = Boolean(forcarReenvio);
             abrirModalEnvio(empresas, true);
         }
 
@@ -925,7 +939,9 @@
             const confirmarBtn = document.getElementById('confirmarEnvioBtn');
 
             if (forcarReenvioAtual) {
-                resumo.textContent = 'Esta empresa já possui envio registrado. Confirme somente se deseja reenviar a comunicação.';
+                resumo.textContent = empresas.length === 1
+                    ? 'Esta empresa já possui envio registrado. Confirme o reenvio.'
+                    : `As ${empresas.length.toLocaleString('pt-BR')} empresas já possuem envio registrado. Confirme o reenvio somente para elas.`;
             } else {
                 resumo.textContent = empresas.length === 1
                     ? 'Será enviado 1 e-mail individual.'
@@ -934,7 +950,7 @@
 
             destinatarios.innerHTML = empresas.map(empresa => `
                 <div class="px-4 py-3">
-                    <p class="font-semibold text-sm text-slate-900">${escapeHtml(empresa.codigo)} — ${escapeHtml(empresa.razao_social)}</p>
+                    <p class="font-semibold text-sm text-slate-900">${escapeHtml(empresa.codigo)} ? ${escapeHtml(empresa.razao_social)}</p>
                     <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(formatarDocumento(empresa.cnpj))}</p>
                     <p class="text-sm text-blue-700 mt-1">${escapeHtml(empresa.email)}</p>
                 </div>`).join('');
@@ -959,7 +975,7 @@
 
                 confirmarBtn.disabled = false;
                 confirmarBtn.textContent = forcarReenvioAtual
-                    ? 'Confirmar reenvio'
+                    ? (empresas.length === 1 ? 'Confirmar reenvio' : `Confirmar ${empresas.length.toLocaleString('pt-BR')} reenvios`)
                     : empresas.length === 1
                         ? 'Confirmar envio'
                         : `Confirmar ${empresas.length.toLocaleString('pt-BR')} envios`;
@@ -1079,7 +1095,8 @@
 
                 const meta = payload.meta || {};
 
-                empresasSelecionadas.clear();
+                // Não apaga as empresas marcadas para a outra operação.
+                empresasEnvioAtual.forEach(empresa => empresasSelecionadas.delete(String(empresa.codigo)));
                 salvarSelecaoNaSessao();
                 empresasEnvioAtual = [];
                 forcarReenvioAtual = false;
